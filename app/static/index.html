@@ -3,133 +3,309 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Law & LSGD Copilot</title>
-    <!-- Fonts -->
+    <title>Token-Wizards — Law & LSGD Copilot</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap">
-    <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/styles.css">
-    <!-- Markdown parser -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-    <div class="app-wrapper">
-        <!-- Sidebar: Context & Actions -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="logo">
-                    <i class="fa-solid fa-scale-balanced logo-icon"></i>
-                    <div>
-                        <h2>Token-Wizards</h2>
-                        <span class="sub-logo">Legal Intelligence</span>
-                    </div>
+
+<!-- ══════════════════════════════════════════════════
+     LOGIN OVERLAY  (shown when not authenticated)
+══════════════════════════════════════════════════ -->
+<div id="loginOverlay" class="login-overlay">
+    <div class="login-card">
+        <div class="login-logo">
+            <i class="fa-solid fa-scale-balanced"></i>
+        </div>
+        <h1 class="login-title">Token-Wizards</h1>
+        <p class="login-subtitle">Legal Intelligence Copilot · Kerala LSGD</p>
+
+        <div id="loginError" class="login-error" style="display:none">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span id="loginErrorMsg">Invalid credentials. Try again.</span>
+        </div>
+
+        <form id="loginForm" class="login-form">
+            <div class="login-field">
+                <label><i class="fa-solid fa-user"></i> User ID</label>
+                <input type="text" id="loginUserId" placeholder="Enter your user ID" autocomplete="username" required>
+            </div>
+            <div class="login-field">
+                <label><i class="fa-solid fa-lock"></i> Password</label>
+                <div class="pwd-wrap">
+                    <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password" required>
+                    <button type="button" class="pwd-toggle" onclick="togglePwd()"><i class="fa-solid fa-eye" id="pwdEyeIcon"></i></button>
                 </div>
             </div>
+            <button type="submit" class="btn-login" id="btnLogin">
+                <i class="fa-solid fa-right-to-bracket"></i> Sign In
+            </button>
+        </form>
 
-            <div class="sidebar-content">
-                <div class="panel card-glass chat-history-panel">
-                    <h3><i class="fa-solid fa-clock-rotate-left"></i> Chat History</h3>
-                    <div id="threadList" class="thread-list">
-                        <div class="loading-threads">Loading...</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="sidebar-footer">
-                <button class="btn-admin" id="openAdminBtn">
-                    <i class="fa-solid fa-database"></i> Knowledge Base
-                </button>
-                <div class="model-indicator">
-                    <div class="status-dot"></div>
-                    <span id="activeModelLabel">Connecting...</span>
-                </div>
-            </div>
-        </aside>
-
-        <!-- Main Chat Interface -->
-        <main class="chat-container">
-            <!-- Header -->
-            <header class="chat-header glass-header">
-                <div class="chat-title">
-                    <h3>Law & LSGD Copilot</h3>
-                    <span class="badge">Kerala Building Rules 2022</span>
-                </div>
-                <div class="chat-actions">
-                    <button class="icon-btn" onclick="clearChat()" title="New Chat"><i class="fa-solid fa-pen-to-square"></i></button>
-                </div>
-            </header>
-
-            <!-- Chat Feed -->
-            <div class="chat-feed" id="chatFeed">
-                <!-- Welcome Message -->
-                <div class="message assistant-message">
-                    <div class="avatar"><i class="fa-solid fa-scale-balanced"></i></div>
-                    <div class="message-content">
-                        <p>Greetings, Officer! I am your AI Copilot for the <strong>Law Department and Local Self Government Department (LSGD)</strong>.</p>
-                        <p>You can:</p>
-                        <ul>
-                            <li>Submit a building permit context from the sidebar to evaluate compliance.</li>
-                            <li>Ask me statutory questions (e.g., "What is the setback rule for a 5000 sqm building near Vembanad lake?").</li>
-                            <li>Upload PDFs for direct evaluation.</li>
-                        </ul>
-                        <p>How can I assist you today?</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Input Area -->
-            <div class="chat-input-wrapper glass-footer">
-                <form id="chatInputForm" class="chat-input-form">
-                    <div class="input-actions">
-                        <button type="button" class="btn-attach" onclick="document.getElementById('pdfFileInput').click()" title="Upload File">
-                            <i class="fa-solid fa-plus"></i> Upload File
-                        </button>
-                        <input type="file" id="pdfFileInput" accept=".pdf" hidden>
-                    </div>
-                    <textarea id="chatInput" placeholder="Ask a legal query or reply to a clarification..." rows="1"></textarea>
-                    <button type="submit" class="btn-send" id="btnSendChat" disabled>
-                        <i class="fa-solid fa-arrow-up"></i>
-                    </button>
-                </form>
-            </div>
-        </main>
+        <p class="login-footer">Secure access for authorised legal officers only.</p>
     </div>
+</div>
 
-    <!-- Admin Knowledge Base Management Modal (Kept mostly same, just styled differently) -->
-    <div class="modal" id="adminModal" style="display: none;">
-        <div class="modal-content glass-modal">
-            <div class="modal-header">
-                <h3><i class="fa-solid fa-database"></i> Knowledge Base Admin</h3>
-                <button class="close-btn" onclick="closeAdminModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="card-glass mb-4">
-                    <h4>Upload New Legal Document</h4>
-                    <form id="adminUploadForm" class="form-grid">
-                        <input type="text" id="adminDocId" placeholder="Doc ID (slug)" required>
-                        <input type="text" id="adminDocName" placeholder="Document Name" required>
-                        <div class="form-row">
-                            <select id="adminDocType">
-                                <option value="Rules">Rules / Act</option>
-                                <option value="Government Order">Government Order</option>
-                                <option value="Circular">Circular</option>
-                                <option value="Judgment">Judgment</option>
-                            </select>
-                            <input type="text" id="adminAuthority" placeholder="Authority">
-                        </div>
-                        <input type="file" id="adminFile" accept=".json,.txt" required class="file-input">
-                        <button type="submit" class="btn-primary mt-2"><i class="fa-solid fa-upload"></i> Upload & Re-Index</button>
-                    </form>
+<!-- ══════════════════════════════════════════════════
+     MAIN APP  (shown after login)
+══════════════════════════════════════════════════ -->
+<div id="appRoot" class="app-wrapper" style="display:none">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="mainSidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <i class="fa-solid fa-scale-balanced logo-icon"></i>
+                <div>
+                    <h2>Token-Wizards</h2>
+                    <span class="sub-logo">Legal Intelligence</span>
                 </div>
-                <div class="card-glass">
-                    <h4>Active Corpus</h4>
-                    <div id="corpusDocList" class="corpus-list"></div>
-                    <button class="btn-secondary w-full mt-2" onclick="triggerReindex()"><i class="fa-solid fa-rotate"></i> Re-Index Knowledge Base</button>
+            </div>
+            <!-- Hide sidebar button -->
+            <button class="icon-btn sidebar-hide-btn" id="hideSidebarBtn" title="Collapse sidebar">
+                <i class="fa-solid fa-angles-left"></i>
+            </button>
+        </div>
+
+        <!-- New Chat button -->
+        <div class="sidebar-new-chat">
+            <button class="btn-new-chat" onclick="newChat()">
+                <i class="fa-solid fa-plus"></i> New Chat
+            </button>
+        </div>
+
+        <div class="sidebar-content">
+            <div class="panel card-glass chat-history-panel">
+                <h3><i class="fa-solid fa-clock-rotate-left"></i> Chat History</h3>
+                <div id="threadList" class="thread-list">
+                    <div class="loading-threads">Loading...</div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <script src="/static/app.js"></script>
+        <div class="sidebar-footer">
+            <!-- Knowledge Base — admin only -->
+            <button class="btn-admin" id="openAdminBtn">
+                <i class="fa-solid fa-database"></i> Knowledge Base
+                <span class="admin-only-badge">Admin</span>
+            </button>
+            <div class="model-indicator">
+                <div class="status-dot"></div>
+                <span id="activeModelLabel">Connecting...</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Sidebar collapsed toggle (shows when sidebar is hidden) -->
+    <button class="sidebar-expand-btn" id="expandSidebarBtn" style="display:none" title="Expand sidebar">
+        <i class="fa-solid fa-angles-right"></i>
+    </button>
+
+    <!-- Main Chat -->
+    <main class="chat-container">
+        <!-- Header -->
+        <header class="chat-header glass-header">
+            <div class="chat-title">
+                <h3>Law &amp; LSGD Copilot</h3>
+                <span class="badge">Kerala Building Rules 2022</span>
+            </div>
+            <div class="chat-actions">
+                <!-- Profile dropdown -->
+                <div class="profile-menu-wrap" id="profileMenuWrap">
+                    <button class="profile-btn" id="profileBtn" onclick="toggleProfileMenu()">
+                        <div class="profile-avatar">
+                            <span id="profileInitial">Y</span>
+                        </div>
+                        <div class="profile-info">
+                            <span class="profile-name" id="profileName">Yash Masane</span>
+                            <span class="profile-role" id="profileRole">Admin</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-down profile-caret" id="profileCaret"></i>
+                    </button>
+                    <div class="profile-dropdown" id="profileDropdown">
+                        <div class="profile-dropdown-header">
+                            <div class="profile-avatar large">
+                                <span id="profileInitialLg">Y</span>
+                            </div>
+                            <div>
+                                <div class="pd-name" id="pdName">Yash Masane</div>
+                                <div class="pd-role" id="pdRole"><i class="fa-solid fa-shield-halved"></i> Admin</div>
+                                <div class="pd-id" id="pdId">ID: admin_yash</div>
+                            </div>
+                        </div>
+                        <div class="profile-dropdown-divider"></div>
+                        <button class="pd-item" id="openAddUserBtn" onclick="openAddUserModal()" style="display:none">
+                            <i class="fa-solid fa-user-plus"></i> Add New User
+                        </button>
+                        <button class="pd-item" onclick="openAdminModal()">
+                            <i class="fa-solid fa-database"></i> Knowledge Base
+                        </button>
+                        <button class="pd-item" onclick="openProfileSettings()">
+                            <i class="fa-solid fa-gear"></i> Settings
+                        </button>
+                        <div class="profile-dropdown-divider"></div>
+                        <button class="pd-item danger" onclick="logout()">
+                            <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Chat Feed -->
+        <div class="chat-feed" id="chatFeed">
+            <div class="message assistant-message">
+                <div class="avatar"><i class="fa-solid fa-scale-balanced"></i></div>
+                <div class="message-content">
+                    <p>Greetings, Officer! I am your AI Copilot for the <strong>Law Department and Local Self Government Department (LSGD)</strong>.</p>
+                    <p>You can:</p>
+                    <ul>
+                        <li>Ask statutory questions (e.g., "What is the setback rule for a 5000 sqm building near Vembanad lake?").</li>
+                        <li>Upload PDFs for direct evaluation.</li>
+                        <li>Manage the knowledge base (Admin only).</li>
+                    </ul>
+                    <p>How can I assist you today?</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="chat-input-wrapper glass-footer">
+            <form id="chatInputForm" class="chat-input-form">
+                <div class="input-actions">
+                    <button type="button" class="btn-attach" onclick="document.getElementById('pdfFileInput').click()" title="Upload File">
+                        <i class="fa-solid fa-plus"></i> Upload File
+                    </button>
+                    <input type="file" id="pdfFileInput" accept=".pdf" hidden>
+                </div>
+                <div style="display: flex; flex-direction: column; flex-grow: 1;">
+                    <div id="attachmentContainer" style="display: none; align-items: center; gap: 8px; padding: 4px 12px; margin-bottom: 4px; background: rgba(0, 0, 0, 0.2); border-radius: 6px; font-size: 0.85rem; color: var(--text-secondary); width: fit-content;">
+                        <!-- dynamic content inserted here -->
+                    </div>
+                    <textarea id="chatInput" placeholder="Ask a legal query or reply to a clarification..." rows="1"></textarea>
+                </div>
+                <button type="submit" class="btn-send" id="btnSendChat" disabled>
+                    <i class="fa-solid fa-arrow-up"></i>
+                </button>
+            </form>
+        </div>
+    </main>
+</div>
+
+<!-- Admin Knowledge Base Modal -->
+<div class="modal" id="adminModal" style="display: none;">
+    <div class="modal-content glass-modal">
+        <div class="modal-header">
+            <h3><i class="fa-solid fa-database"></i> Knowledge Base Admin</h3>
+            <button class="close-btn" onclick="closeAdminModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="card-glass mb-4">
+                <h4>Upload New Legal Document</h4>
+                <form id="adminUploadForm" class="form-grid">
+                    <input type="text" id="adminDocId" placeholder="Doc ID (slug)" required>
+                    <input type="text" id="adminDocName" placeholder="Document Name" required>
+                    <div class="form-row">
+                        <select id="adminDocType">
+                            <option value="Rules">Rules / Act</option>
+                            <option value="Government Order">Government Order</option>
+                            <option value="Circular">Circular</option>
+                            <option value="Judgment">Judgment</option>
+                        </select>
+                        <input type="text" id="adminAuthority" placeholder="Authority">
+                    </div>
+                    <input type="file" id="adminFile" accept=".json,.txt" required class="file-input">
+                    <button type="submit" class="btn-primary mt-2"><i class="fa-solid fa-upload"></i> Upload &amp; Re-Index</button>
+                </form>
+            </div>
+            <div class="card-glass">
+                <h4>Active Corpus</h4>
+                <div id="corpusDocList" class="corpus-list"></div>
+                <button class="btn-secondary w-full mt-2" onclick="triggerReindex()"><i class="fa-solid fa-rotate"></i> Re-Index Knowledge Base</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Profile Settings Modal (dummy) -->
+<div class="modal" id="profileSettingsModal" style="display: none;">
+    <div class="modal-content glass-modal" style="max-width:400px">
+        <div class="modal-header">
+            <h3><i class="fa-solid fa-gear"></i> Profile Settings</h3>
+            <button class="close-btn" onclick="closeProfileSettings()">&times;</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+            <div style="text-align:center;padding:12px 0;">
+                <div class="profile-avatar large" style="margin:0 auto 10px;">
+                    <span id="settingsInitial">Y</span>
+                </div>
+                <div style="font-weight:700;font-size:1.1rem" id="settingsName">Yash Masane</div>
+                <div style="color:var(--accent);font-size:0.8rem;margin-top:4px"><i class="fa-solid fa-shield-halved"></i> Administrator</div>
+            </div>
+            <div class="settings-field">
+                <label>Full Name</label>
+                <input type="text" id="settingsFullName" value="Yash Masane" disabled>
+            </div>
+            <div class="settings-field">
+                <label>User ID</label>
+                <input type="text" value="admin_yash" disabled>
+            </div>
+            <div class="settings-field">
+                <label>Department</label>
+                <input type="text" value="Law & LSGD, Kerala" disabled>
+            </div>
+            <div class="settings-field">
+                <label>Role</label>
+                <input type="text" value="Admin (Full Access)" disabled>
+            </div>
+            <p style="font-size:0.75rem;color:var(--text-secondary);text-align:center">
+                This is a prototype. Profile editing is not yet enabled.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Add User Modal (Admin Only) -->
+<div class="modal" id="addUserModal" style="display: none;">
+    <div class="modal-content glass-modal" style="max-width:400px">
+        <div class="modal-header">
+            <h3><i class="fa-solid fa-user-plus"></i> Add New User</h3>
+            <button class="close-btn" onclick="closeAddUserModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="addUserForm" class="form-grid" style="display:flex;flex-direction:column;gap:12px;">
+                <div class="settings-field">
+                    <label>Full Name</label>
+                    <input type="text" id="addUserName" placeholder="e.g. Jane Doe" required>
+                </div>
+                <div class="settings-field">
+                    <label>User ID</label>
+                    <input type="text" id="addUserLogin" placeholder="e.g. officer_jane" required>
+                </div>
+                <div class="settings-field">
+                    <label>Role</label>
+                    <select id="addUserRole" style="background:rgba(0,0,0,0.2); border:1px solid var(--border-glass); color:var(--text-secondary); padding:10px 12px; border-radius:8px; font-size:0.88rem; outline:none; font-family:inherit;">
+                        <option value="Officer">Legal Officer</option>
+                        <option value="Admin">Administrator</option>
+                    </select>
+                </div>
+                <div class="settings-field">
+                    <label>Temporary Password</label>
+                    <input type="password" id="addUserPassword" placeholder="Minimum 6 characters" required>
+                </div>
+                <button type="submit" class="btn-primary mt-2">
+                    <i class="fa-solid fa-check"></i> Create User
+                </button>
+            </form>
+            <div id="addUserSuccess" style="display:none; color:var(--success); text-align:center; margin-top:12px; font-size:0.85rem;">
+                <i class="fa-solid fa-circle-check"></i> User created successfully!
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/static/app.js"></script>
 </body>
 </html>

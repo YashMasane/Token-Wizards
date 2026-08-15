@@ -10,18 +10,13 @@ PLANNER_SYSTEM_PROMPT = """You are the Senior Legal Strategy Planner for the Law
 Your task is to analyze an incoming building permit application or legal query and output a JSON execution plan.
 
 Examine the input for:
-1. Missing Critical Parameters: If the user is explicitly asking you to evaluate a specific building project or permit, check if the distance to a water body or the project area is missing.
-   (IMPORTANT: DO NOT ask for clarification or missing parameters if the user is just saying hello, asking a general legal question, or asking a hypothetical question. Only ask if it is a specific permit evaluation.)
-2. Query Decomposition: Create 3 targeted sub-queries for statutory retrieval:
+1. Query Decomposition: Create 3 targeted sub-queries for statutory retrieval:
    - 'rules_query': Target Kerala Building Rules 2022 (environmental clearance thresholds, setbacks, NOCs)
    - 'gos_query': Target LSGD Government Orders & Environment Circulars (GO 45/2024, outdated GO 22/2021, Circular 12/2025)
    - 'judgments_query': Target High Court of Kerala Judgments (WP(C) 1234/2023 precedents)
 
 Return ONLY valid JSON matching this schema:
 {
-  "requires_clarification": false,
-  "clarification_prompt": null,
-  "missing_parameters": [],
   "decomposed_sub_queries": {
     "rules": "...",
     "gos": "...",
@@ -36,7 +31,7 @@ Return ONLY valid JSON matching this schema:
 }
 """
 
-def run_planner_agent(raw_input: str, parsed_form: Dict[str, Any] = None, provider: str = None, is_clarification: bool = False) -> Dict[str, Any]:
+def run_planner_agent(raw_input: str, parsed_form: Dict[str, Any] = None, provider: str = None, is_clarification: bool = False, document_context: str = None) -> Dict[str, Any]:
     """
     Executes the Planner Agent to evaluate completeness, decompose sub-queries, and generate execution plan.
     """
@@ -48,19 +43,22 @@ def run_planner_agent(raw_input: str, parsed_form: Dict[str, Any] = None, provid
         pass # Allow LLM to incorporate this into plan
 
     # Deterministic fallback check for missing parameters (Form B-7 specific)
-    combined_str = (raw_input + " " + str(parsed_form or "")).lower()
+    combined_str = (raw_input + " " + str(parsed_form or "") + " " + str(document_context or "")).lower()
     
     missing_params = []
     # If the user is asking a general legal question (e.g. "What is a building permit?"), we don't need project_area_sqm
     # We only need these parameters if they are asking about a specific project or permit application.
-    is_project_specific = any(word in combined_str for word in ["permit", "construct", "building", "project", "application", "approve", "clearance"])
-    is_general_query = any(word in combined_str for word in ["what is", "how to", "explain", "define", "difference between"])
+    is_project_specific = any(word in combined_str for word in ["permit", "construct", "building", "project", "application", "approve", "clearance", "mall"])
+    is_general_query = any(word in combined_str for word in ["what is", "how to", "explain", "define", "difference between", "what are the rules", "rules regarding"])
     
+    import re
     if is_project_specific and not is_general_query:
-        if "sq.m" not in combined_str and "sqm" not in combined_str and "area" not in combined_str and not (parsed_form and parsed_form.get("project_area_sqm")):
+        has_area = bool(re.search(r'\d+[\s,]*(sq\.?m|square\s+meters?|sq\.?\s*ft|square\s+feet)', combined_str)) or ("sq.m" in combined_str) or ("sqm" in combined_str) or (parsed_form and parsed_form.get("project_area_sqm"))
+        if not has_area:
             missing_params.append("project_area_sqm")
                 
-        if "lake" not in combined_str and "river" not in combined_str and "water" not in combined_str and "esz" not in combined_str and "crz" not in combined_str and not (parsed_form and parsed_form.get("location")):
+        has_distance = bool(re.search(r'\d+[\s,]*(m|meters?|km|kilometers?)\s+(from|to|away)', combined_str)) or any(w in combined_str for w in ["lake", "river", "water", "esz", "crz"]) or (parsed_form and parsed_form.get("location"))
+        if not has_distance:
             missing_params.append("distance_to_water_body")
 
     if missing_params and len(combined_str) < 150:
@@ -92,6 +90,10 @@ def run_planner_agent(raw_input: str, parsed_form: Dict[str, Any] = None, provid
             content = content.split("```")[1].strip()
             
         plan_dict = json.loads(content)
+        # Ensure these are added since LLM is no longer generating them
+        plan_dict["requires_clarification"] = False
+        plan_dict["clarification_prompt"] = None
+        plan_dict["missing_parameters"] = []
         return plan_dict
     except json.JSONDecodeError as e:
         logger.error(f"[PlannerAgent] LLM returned non-JSON response: {e}. Raising AgentExecutionError.")

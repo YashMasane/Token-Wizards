@@ -2,9 +2,10 @@ import os
 import glob
 import json
 import logging
+import asyncio
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from app.models.schemas import LegalQueryRequest, ApplicationAnalysisRequest, FormB7Application
 from app.graph.workflow import legal_graph
 from app.db import (
@@ -41,36 +42,68 @@ async def process_legal_query(req: LegalQueryRequest):
         "parsed_form": {},
         "chat_history": history_msgs,
         "iteration_count": 0,
-        "model_provider": req.model_provider,  # wire API override through graph
+        "model_provider": req.model_provider,
         "model_name": req.model_name,
+        "document_context": req.document_context or None,
+        "document_filename": req.document_filename or None,
     }
     
     config = {"configurable": {"thread_id": thread_id}}
     
-    try:
-        logger.info(f"[API: /api/query] Invoking LangGraph workflow for thread '{thread_id}'...")
-        final_state = legal_graph.invoke(initial_state, config=config)
-
-        markdown_out = final_state.get("final_markdown_output") or final_state.get("draft_opinion") or "No output generated."
-        
-        # Save assistant message
-        save_message(thread_id, role="assistant", content=markdown_out, metadata={
-            "risk_flags": final_state.get("compliance_risk_flags", []),
-            "reasoning_plan": final_state.get("reasoning_plan", [])
-        })
-        
-        return {
-            "thread_id": thread_id,
-            "markdown_output": markdown_out,
-            "requires_user_clarification": final_state.get("requires_user_clarification", False),
-            "clarification_prompt": final_state.get("clarification_prompt"),
-            "compliance_risk_flags": final_state.get("compliance_risk_flags", []),
-            "reasoning_plan": final_state.get("reasoning_plan", []),
-            "critic_verified": final_state.get("critic_verified", True)
-        }
-    except Exception as e:
-        logger.error(f"Error processing legal query graph: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    async def event_generator():
+        try:
+            logger.info(f"[API: /api/query] Invoking LangGraph streaming workflow for thread '{thread_id}'...")
+            final_output = ""
+            risk_flags = []
+            
+            async for event in legal_graph.astream(initial_state, config=config, stream_mode="updates"):
+                for node, update in event.items():
+                    if update is None:
+                        continue
+                        
+                    # Stream which node just finished
+                    yield f"data: {json.dumps({'type': 'node_status', 'node': node})}\n\n"
+                    
+                    if node == "planner":
+                        if update.get("reasoning_plan"):
+                            yield f"data: {json.dumps({'type': 'plan', 'content': update['reasoning_plan']})}\n\n"
+                        if update.get("requires_user_clarification"):
+                            yield f"data: {json.dumps({'type': 'clarification', 'content': update['clarification_prompt']})}\n\n"
+                    
+                    if node == "multi_agent_eval":
+                        if update.get("compliance_risk_flags"):
+                            risk_flags = update["compliance_risk_flags"]
+                            yield f"data: {json.dumps({'type': 'flags', 'content': risk_flags})}\n\n"
+                            
+                    if node == "synthesis" or node == "chitchat":
+                        final_output = update.get("final_markdown_output") or update.get("draft_opinion") or "No output generated."
+                        # Smooth pseudo-streaming for final text
+                        import re
+                        tokens = re.split(r'(\s+)', final_output)
+                        for token in tokens:
+                            if token:
+                                yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                                await asyncio.sleep(0.01)
+                                
+                        # Emit structured sources at the end so they appear after text
+                        structured_sources = update.get("sources_used", [])
+                        if structured_sources:
+                            yield f"data: {json.dumps({'type': 'sources', 'content': structured_sources})}\n\n"
+                                
+            # End of stream, save to DB
+            save_message(thread_id, role="assistant", content=final_output, metadata={"risk_flags": risk_flags})
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Error processing legal query graph stream: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            
+    headers = {
+        "X-Accel-Buffering": "no",
+        "Cache-Control": "no-cache",
+        "Transfer-Encoding": "chunked",
+    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
 
 @router.post("/analyze-application")
@@ -101,43 +134,79 @@ async def analyze_building_application(req: ApplicationAnalysisRequest):
     
     config = {"configurable": {"thread_id": thread_id}}
     
-    try:
-        logger.info(f"[API: /api/analyze-application] Invoking LangGraph evaluation graph...")
-        final_state = legal_graph.invoke(initial_state, config=config)
-        markdown_out = final_state.get("final_markdown_output") or "Analysis completed."
-        
-        save_message(thread_id, role="assistant", content=markdown_out, metadata={
-            "risk_flags": final_state.get("compliance_risk_flags", [])
-        })
-        
-        return {
-            "thread_id": thread_id,
-            "markdown_output": markdown_out,
-            "compliance_risk_flags": final_state.get("compliance_risk_flags", []),
-            "reasoning_plan": final_state.get("reasoning_plan", []),
-            "parsed_form": form_dict
-        }
-    except Exception as e:
-        logger.error(f"Error analyzing building application: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    async def event_generator():
+        try:
+            logger.info(f"[API: /api/analyze-application] Invoking LangGraph streaming evaluation graph...")
+            final_output = ""
+            risk_flags = []
+            
+            async for event in legal_graph.astream(initial_state, config=config, stream_mode="updates"):
+                for node, update in event.items():
+                    if update is None:
+                        continue
+                        
+                    # Stream which node just finished
+                    yield f"data: {json.dumps({'type': 'node_status', 'node': node})}\n\n"
+
+                    if node == "planner":
+                        if update.get("reasoning_plan"):
+                            yield f"data: {json.dumps({'type': 'plan', 'content': update['reasoning_plan']})}\n\n"
+                    
+                    if node == "multi_agent_eval":
+                        if update.get("compliance_risk_flags"):
+                            risk_flags = update["compliance_risk_flags"]
+                            yield f"data: {json.dumps({'type': 'flags', 'content': risk_flags})}\n\n"
+                            
+                    if node == "synthesis":
+                        final_output = update.get("final_markdown_output") or "Analysis completed."
+                        import re
+                        tokens = re.split(r'(\s+)', final_output)
+                        for token in tokens:
+                            if token:
+                                yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                                await asyncio.sleep(0.01)
+                                
+                        structured_sources = update.get("sources_used", [])
+                        if structured_sources:
+                            yield f"data: {json.dumps({'type': 'sources', 'content': structured_sources})}\n\n"
+                                
+            save_message(thread_id, role="assistant", content=final_output, metadata={"risk_flags": risk_flags})
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Error analyzing building application stream: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            
+    headers = {
+        "X-Accel-Buffering": "no",
+        "Cache-Control": "no-cache",
+        "Transfer-Encoding": "chunked",
+    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
 
 @router.post("/upload-pdf")
 async def upload_permit_pdf(file: UploadFile = File(...), thread_id: str = Form("default_session")):
-    logger.info(f"[API: /api/upload-pdf] Received PDF file '{file.filename}' for thread '{thread_id}'")
+    """Approach B: Extract raw text from any PDF and return it so the frontend
+    can attach it as document_context to the next user query."""
+    logger.info(f"[API: /api/upload-pdf] Extracting text from '{file.filename}' for thread '{thread_id}'")
     try:
         file_bytes = await file.read()
         parsed_doc = parse_pdf_document(file_bytes, file.filename)
-        extracted_form = parse_form_b7_from_text_or_json(parsed_doc["full_text"])
-        logger.info(f"[API: /api/upload-pdf] Extracted fields: project='{extracted_form.get('project_name')}', area={extracted_form.get('project_area_sqm')}")
-        
-        # Invoke graph with extracted fields
-        form_obj = FormB7Application(**extracted_form)
-        analysis_req = ApplicationAnalysisRequest(form_data=form_obj, thread_id=thread_id)
-        return await analyze_building_application(analysis_req)
+        extracted_text = parsed_doc.get("full_text", "").strip()
+        word_count = len(extracted_text.split())
+        page_count = len(parsed_doc.get("pages", [])) or 1
+        logger.info(f"[API: /api/upload-pdf] Extracted {word_count} words / {page_count} pages from '{file.filename}'")
+        return JSONResponse(content={
+            "success": True,
+            "filename": file.filename,
+            "extracted_text": extracted_text,
+            "word_count": word_count,
+            "page_count": page_count,
+        })
     except Exception as e:
-        logger.error(f"Failed to process uploaded PDF: {e}")
-        raise HTTPException(status_code=400, detail=f"Failed to process uploaded PDF: {str(e)}")
+        logger.error(f"Failed to extract text from uploaded PDF: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to extract text from PDF: {str(e)}")
 
 
 

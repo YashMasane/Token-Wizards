@@ -8,6 +8,8 @@ class LegalAssistantState(TypedDict):
     chat_history: List[Dict[str, str]]
     model_provider: Optional[str]  # provider override from API request (groq/openai/ollama)
     model_name: Optional[str]      # model name override from API request
+    document_context: Optional[str]   # Full text of user-uploaded document (Approach B)
+    document_filename: Optional[str]  # Original filename for display
     
     # Planner Agent Artifacts
     system_error: Optional[str]  # Set when an unrecoverable system error occurs; propagates through graph

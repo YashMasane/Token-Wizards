@@ -102,8 +102,16 @@ def planner_node(state: LegalAssistantState) -> Dict[str, Any]:
     parsed_form = state.get("parsed_form") or {}
     is_clarification = state.get("input_type") == "clarification_answer"
 
+    document_context = state.get("document_context")
+
     try:
-        plan_data = run_planner_agent(raw_input, parsed_form, provider=state.get("model_provider"), is_clarification=is_clarification)
+        plan_data = run_planner_agent(
+            raw_input, 
+            parsed_form, 
+            provider=state.get("model_provider"), 
+            is_clarification=is_clarification,
+            document_context=document_context
+        )
     except (AgentExecutionError, LLMConfigurationError) as e:
         logger.error(f"[Node: Planner] Planning failed: {e}")
         error_msg = _format_system_error(e)
@@ -145,6 +153,11 @@ def targeted_retrieval_node(state: LegalAssistantState) -> Dict[str, Any]:
     rules_q = sub_queries.get("rules") or raw_input
     gos_q = sub_queries.get("gos") or raw_input
     judgments_q = sub_queries.get("judgments") or raw_input
+
+    # Ensure they are strings (LLM might sometimes generate dicts/lists for these keys)
+    rules_q = str(rules_q) if not isinstance(rules_q, str) else rules_q
+    gos_q = str(gos_q) if not isinstance(gos_q, str) else gos_q
+    judgments_q = str(judgments_q) if not isinstance(judgments_q, str) else judgments_q
 
     iteration = state.get("retrieval_iteration", 0) + 1
 
@@ -338,10 +351,17 @@ def draft_synthesis_node(state: LegalAssistantState) -> Dict[str, Any]:
     model_provider = state.get("model_provider")
 
     try:
-        draft = run_draft_synthesis_agent(
+        result = run_draft_synthesis_agent(
             raw_input, parsed_form, stat_findings, go_findings, prec_findings,
-            risk_flags, chunks, provider=model_provider
+            risk_flags, chunks, provider=model_provider,
+            document_context=state.get("document_context"),
+            document_filename=state.get("document_filename"),
         )
+        # agent now returns a (text, sources_list) tuple
+        if isinstance(result, tuple):
+            draft, structured_sources = result
+        else:
+            draft, structured_sources = result, []
     except (AgentExecutionError, LLMConfigurationError) as e:
         logger.error(f"[Node: DraftSynthesis] Synthesis agent failed: {e}")
         error_msg = _format_system_error(e)
@@ -361,4 +381,5 @@ def draft_synthesis_node(state: LegalAssistantState) -> Dict[str, Any]:
         "critic_verified": verified,
         "critic_feedback": critic_feedback,
         "final_markdown_output": draft,
+        "sources_used": structured_sources,
     }
