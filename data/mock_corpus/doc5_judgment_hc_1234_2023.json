@@ -1,0 +1,30 @@
+{
+  "doc_id": "doc5_judgment_hc_1234_2023",
+  "document_name": "High Court of Kerala, WP(C) No. 1234/2023",
+  "doc_type": "Judgment",
+  "issuing_authority": "High Court of Kerala",
+  "date": "2023-11-05",
+  "is_outdated": false,
+  "superseded_by": null,
+  "download_url": "/api/documents/download/doc5_judgment_hc_1234_2023",
+  "sections": [
+    {
+      "section_number": "Case Details",
+      "heading": "Background & Facts",
+      "page_number": 1,
+      "content": "Case: Permit quashed for lack of environmental clearance in 4,500 sq.m. commercial project near Vembanad Lake."
+    },
+    {
+      "section_number": "Key Holding",
+      "heading": "Judicial Precedent & Void Ab Initio Principle",
+      "page_number": 3,
+      "content": "Key Holding: Building permits issued without mandatory environmental clearance under Building Rules Section 12(3) are void ab initio and liable to be quashed."
+    },
+    {
+      "section_number": "Court Order & Relief",
+      "heading": "Demolition Order & Departmental Inquiry",
+      "page_number": 4,
+      "content": "Relief: Demolition ordered + departmental inquiry ordered against issuing officer for granting building permit in violation of Section 12(3)."
+    }
+  ]
+}
