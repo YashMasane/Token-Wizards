@@ -15,7 +15,7 @@ Return ONLY a valid JSON object matching this schema:
 
 Definitions:
 1. "form_evaluation": The user is explicitly asking to evaluate a specific building permit or project (e.g., they provide form details, project area, or mention evaluating a Form B-7).
-2. "chitchat": The user is making conversational small talk, asking if you remember something from the history, saying hello, or asking a direct factual question that DOES NOT require searching the legal corpus (e.g., "Do you remember my name?", "Hi I am Yash", "What can you do?").
+2. "chitchat": The user is making conversational small talk, asking if you remember something from the history, saying hello, asking a direct factual question that DOES NOT require searching the legal corpus, OR asking for programming code/non-legal topics (e.g., "give me python code").
 3. "legal_query": The user is asking a substantive legal question that REQUIRES searching the Kerala Building Rules or Government Orders to provide an accurate answer (e.g., "What is the setback rule?", "Do I need clearance for a 5000 sq.m building?").
 
 Analyze the conversation carefully. If the user is just saying "Hi I am Yash", the intent is "chitchat".

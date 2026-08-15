@@ -46,8 +46,9 @@ def _format_system_error(error: Exception) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 def security_guardrail_node(state: LegalAssistantState) -> Dict[str, Any]:
     raw_input = state["raw_input"]
+    model_provider = state.get("model_provider")
     logger.info(f"[Node: SecurityGuardrail] Evaluating security and scope for input length: {len(raw_input)}")
-    is_allowed, msg = evaluate_security_and_scope(raw_input)
+    is_allowed, msg = evaluate_security_and_scope(raw_input, provider=model_provider)
     return {
         "is_security_allowed": is_allowed,
         "security_warning": msg if not is_allowed else None,
