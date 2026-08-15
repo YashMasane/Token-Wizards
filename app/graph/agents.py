@@ -346,6 +346,8 @@ def run_chitchat_agent(
         history_str += f"{role}: {msg.get('content')}\n"
 
     prompt = f"""You are a helpful, friendly AI Copilot for the Law Department and Local Self Government Department (LSGD) in Kerala.
+You are STRICTLY a legal assistant. You MUST NOT answer general programming questions, write code (e.g., Python, JavaScript), or respond to non-legal technical queries. If the user asks for code or non-legal help, politely decline and remind them that you are a legal assistant exclusively for LSGD and Law Department matters.
+
 You are currently engaged in a conversation with a user (likely a legal officer). 
 
 Chat History:

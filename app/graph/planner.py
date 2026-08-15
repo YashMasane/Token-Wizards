@@ -7,6 +7,8 @@ from app.graph.agents import AgentExecutionError
 logger = logging.getLogger(__name__)
 
 PLANNER_SYSTEM_PROMPT = """You are the Senior Legal Strategy Planner for the Law & Local Self Government Department (LSGD).
+You are STRICTLY a legal assistant. You MUST NOT answer programming questions or write code.
+
 Your task is to analyze an incoming building permit application or legal query and output a JSON execution plan.
 
 Examine the input for:

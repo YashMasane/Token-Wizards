@@ -1392,3 +1392,231 @@ body {
     font-family: inherit;
     outline: none;
 }
+
+/* ══════════════════════════════════════
+   MODALS (KNOWLEDGE BASE & SETTINGS)
+══════════════════════════════════════ */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(6, 9, 19, 0.8);
+    backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: fadeInModal 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal-content.glass-modal {
+    background: linear-gradient(145deg, rgba(15, 22, 41, 0.9), rgba(6, 9, 19, 0.95));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(79, 70, 229, 0.2);
+    border-radius: var(--radius-lg);
+    width: 90%;
+    max-width: 650px;
+    display: flex;
+    flex-direction: column;
+    animation: slideUpModal 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-glass);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Outfit', sans-serif;
+    letter-spacing: 0.5px;
+}
+
+.modal-header h3 i {
+    color: var(--accent);
+    filter: drop-shadow(0 0 8px rgba(6, 182, 212, 0.5));
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    line-height: 1;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.1);
+    transform: rotate(90deg);
+}
+
+.modal-body {
+    padding: 24px;
+    max-height: 75vh;
+    overflow-y: auto;
+}
+
+.modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+/* Modal specific Cards */
+.card-glass {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-glass);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+
+.card-glass:hover {
+    border-color: rgba(79, 70, 229, 0.3);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.card-glass h4 {
+    margin: 0 0 16px 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* Forms in Modal */
+.form-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.form-grid input[type="text"],
+.form-grid input[type="password"],
+.form-grid select {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    width: 100%;
+    outline: none;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.form-grid input:focus,
+.form-grid select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.form-grid select option {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+.file-input {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    color: var(--text-secondary);
+    padding: 14px;
+    border-radius: 8px;
+    width: 100%;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.3s ease;
+    font-family: inherit;
+    font-size: 0.85rem;
+}
+
+.file-input:hover {
+    border-color: var(--primary);
+    color: var(--text-primary);
+    background: rgba(79, 70, 229, 0.05);
+}
+
+.file-input::file-selector-button {
+    background: var(--primary);
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    margin-right: 12px;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.file-input::file-selector-button:hover {
+    background: var(--primary-hover);
+}
+
+/* Corpus List */
+.corpus-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 180px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.corpus-item {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s;
+}
+
+.corpus-item:hover {
+    background: rgba(0, 0, 0, 0.4);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+@keyframes fadeInModal {
+    from { opacity: 0; backdrop-filter: blur(0px); }
+    to { opacity: 1; backdrop-filter: blur(8px); }
+}
+
+@keyframes slideUpModal {
+    from { opacity: 0; transform: translateY(30px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
