@@ -7,6 +7,8 @@ class LegalQueryRequest(BaseModel):
     model_provider: Optional[str] = Field(default=None, description="Optional provider override (groq/openai/ollama)")
     model_name: Optional[str] = Field(default=None, description="Optional specific model override")
     is_clarification_response: Optional[bool] = Field(default=False, description="Flag indicating if this is an answer to a clarification request")
+    document_context: Optional[str] = Field(default=None, description="Full text of a user-uploaded document to be analyzed")
+    document_filename: Optional[str] = Field(default=None, description="Original filename of the uploaded document")
 
 class FormB7Application(BaseModel):
     project_name: str = Field(..., description="Name of the commercial project")

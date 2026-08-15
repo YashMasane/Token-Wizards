@@ -1,11 +1,163 @@
 let currentThreadId = "session_" + Date.now();
 
-document.addEventListener("DOMContentLoaded", () => {
+// ─── Demo credentials (prototype only — no backend auth) ───
+const DEMO_USERS = [
+    { id: "admin_yash", password: "lsgd@2024", name: "Yash Masane", role: "Admin" },
+    { id: "officer01",  password: "officer@123", name: "Legal Officer", role: "Officer" },
+];
+let currentUser = null;
+
+// ─── Boot ───
+function initApp() {
+    const saved = sessionStorage.getItem("tw_user");
+    if (saved) {
+        currentUser = JSON.parse(saved);
+        document.getElementById("loginOverlay").style.display = "none";
+        bootApp();
+    } else {
+        setupLoginForm();
+    }
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initApp);
+} else {
+    initApp();
+}
+
+function setupLoginForm() {
+    document.getElementById("loginForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const userId   = document.getElementById("loginUserId").value.trim();
+        const password = document.getElementById("loginPassword").value;
+        const user = DEMO_USERS.find(u => u.id === userId && u.password === password);
+        if (user) {
+            currentUser = user;
+            sessionStorage.setItem("tw_user", JSON.stringify(user));
+            // Fade out login
+            const overlay = document.getElementById("loginOverlay");
+            overlay.style.transition = "opacity 0.4s ease";
+            overlay.style.opacity = "0";
+            setTimeout(() => {
+                overlay.style.display = "none";
+                bootApp();
+            }, 400);
+        } else {
+            document.getElementById("loginError").style.display = "flex";
+            document.getElementById("loginErrorMsg").textContent = "Invalid User ID or password.";
+        }
+    });
+}
+
+function bootApp() {
+    document.getElementById("appRoot").style.display = "flex";
+    // Populate profile info
+    const initial = (currentUser.name || "?")[0].toUpperCase();
+    ["profileInitial","profileInitialLg","settingsInitial"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = initial;
+    });
+    document.getElementById("profileName").textContent = currentUser.name;
+    document.getElementById("profileRole").textContent = currentUser.role;
+    document.getElementById("pdName").textContent = currentUser.name;
+    document.getElementById("pdRole").innerHTML = `<i class="fa-solid fa-shield-halved"></i> ${currentUser.role}`;
+    document.getElementById("pdId").textContent = `ID: ${currentUser.id}`;
+    document.getElementById("settingsName").textContent = currentUser.name;
+    document.getElementById("settingsFullName").value = currentUser.name;
+    // Show Admin-only items
+    if (currentUser.role === "Admin") {
+        const addUserBtn = document.getElementById("openAddUserBtn");
+        if (addUserBtn) addUserBtn.style.display = "flex";
+    } else {
+        const adminBtn = document.getElementById("openAdminBtn");
+        if (adminBtn) adminBtn.style.display = "none";
+    }
+    // Wire sidebar & profile
+    setupSidebar();
     fetchActiveModel();
     setupEventListeners();
     loadCorpusDocs();
     loadThreads();
-});
+    // Close profile dropdown on outside click
+    document.addEventListener("click", (e) => {
+        if (!document.getElementById("profileMenuWrap")?.contains(e.target)) {
+            closeProfileMenu();
+        }
+    });
+}
+
+function logout() {
+    sessionStorage.removeItem("tw_user");
+    currentUser = null;
+    location.reload();
+}
+
+function togglePwd() {
+    const input = document.getElementById("loginPassword");
+    const icon  = document.getElementById("pwdEyeIcon");
+    if (input.type === "password") {
+        input.type = "text";
+        icon.className = "fa-solid fa-eye-slash";
+    } else {
+        input.type = "password";
+        icon.className = "fa-solid fa-eye";
+    }
+}
+
+// ─── Sidebar toggle ───
+function setupSidebar() {
+    document.getElementById("hideSidebarBtn").addEventListener("click", () => {
+        document.getElementById("mainSidebar").classList.add("collapsed");
+        document.getElementById("expandSidebarBtn").style.display = "flex";
+    });
+    document.getElementById("expandSidebarBtn").addEventListener("click", () => {
+        document.getElementById("mainSidebar").classList.remove("collapsed");
+        document.getElementById("expandSidebarBtn").style.display = "none";
+    });
+}
+
+function newChat() {
+    clearChat();
+    loadThreads();
+}
+
+// ─── Profile dropdown ───
+function toggleProfileMenu() {
+    const dd    = document.getElementById("profileDropdown");
+    const caret = document.getElementById("profileCaret");
+    const open  = dd.classList.toggle("open");
+    caret.classList.toggle("open", open);
+}
+
+function closeProfileMenu() {
+    document.getElementById("profileDropdown")?.classList.remove("open");
+    document.getElementById("profileCaret")?.classList.remove("open");
+}
+
+function openProfileSettings() {
+    closeProfileMenu();
+    document.getElementById("profileSettingsModal").style.display = "flex";
+}
+
+function closeProfileSettings() {
+    document.getElementById("profileSettingsModal").style.display = "none";
+}
+
+function openAddUserModal() {
+    closeProfileMenu();
+    document.getElementById("addUserForm").reset();
+    document.getElementById("addUserSuccess").style.display = "none";
+    const btn = document.getElementById("addUserForm").querySelector("button[type=submit]");
+    btn.disabled = false;
+    btn.style.display = "block";
+    btn.innerHTML = '<i class="fa-solid fa-check"></i> Create User';
+    document.getElementById("addUserModal").style.display = "flex";
+}
+
+function closeAddUserModal() {
+    document.getElementById("addUserModal").style.display = "none";
+}
+
 
 function setupEventListeners() {
     // Chat Input Submit
@@ -21,18 +173,22 @@ function setupEventListeners() {
 
     function handleChatSubmit() {
         const query = chatInput.value.trim();
-        if (query) {
+        // Allow submission if there is text OR if a document is attached
+        if (query || currentDocFilename) {
             submitChatMessage(query);
             chatInput.value = "";
             chatInput.style.height = 'auto';
             btnSendChat.disabled = true;
+            document.getElementById("attachmentContainer").style.display = "none";
+            document.getElementById("attachmentContainer").innerHTML = "";
+            document.getElementById('pdfFileInput').value = "";
         }
     }
 
     chatInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault(); // Prevent newline in textarea
-            if (chatInput.value.trim() !== "") {
+            if (chatInput.value.trim() !== "" || currentDocFilename) {
                 handleChatSubmit();
             }
         }
@@ -53,6 +209,23 @@ function setupEventListeners() {
     // Admin Modal
     document.getElementById("openAdminBtn").addEventListener("click", openAdminModal);
     document.getElementById("adminUploadForm").addEventListener("submit", submitAdminUpload);
+
+    // Add User Modal
+    document.getElementById("addUserForm")?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector("button[type=submit]");
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
+        
+        // Simulate API call
+        setTimeout(() => {
+            document.getElementById("addUserSuccess").style.display = "block";
+            btn.style.display = "none";
+            setTimeout(() => {
+                closeAddUserModal();
+            }, 1500);
+        }, 800);
+    });
 }
 
 // --- Chat Core ---
@@ -71,6 +244,7 @@ function appendUserMessage(text, metadataHtml = "") {
     `;
     feed.appendChild(div);
     feed.scrollTop = feed.scrollHeight;
+    return div;
 }
 
 function appendAssistantMessage(htmlContent) {
@@ -191,29 +365,45 @@ async function loadThreadHistory(threadId) {
     }
 }
 
+let currentDocContext = null;
+let currentDocFilename = null;
+
 async function submitChatMessage(query) {
-    appendUserMessage(query);
+    let attachmentHtml = "";
+    if (currentDocFilename) {
+        attachmentHtml = `
+            <div style="margin-top: 8px; padding: 6px 12px; background: rgba(0,0,0,0.15); border-radius: 6px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-glass);">
+                <i class="fa-solid fa-file-pdf" style="color:var(--danger)"></i> 
+                <strong>${currentDocFilename}</strong>
+            </div>
+        `;
+    }
+    
+    appendUserMessage(query, attachmentHtml);
     showTypingIndicator();
 
-    // Check if we are responding to a clarification by checking if there's a recent banner in the UI state
-    // (This is simplified; ideally server tracks it but we can set is_clarification_response based on previous AI msg)
     const isClarification = document.body.dataset.pendingClarification === "true";
-    document.body.dataset.pendingClarification = "false"; // reset
+    document.body.dataset.pendingClarification = "false"; 
 
     try {
+        const payload = {
+            query: query,
+            thread_id: currentThreadId,
+            is_clarification_response: isClarification
+        };
+        if (currentDocContext) {
+            payload.document_context = currentDocContext;
+            payload.document_filename = currentDocFilename;
+            currentDocContext = null; // Consume it once
+            currentDocFilename = null;
+        }
+
         const res = await fetch("/api/query", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                query: query,
-                thread_id: currentThreadId,
-                is_clarification_response: isClarification
-            })
+            body: JSON.stringify(payload)
         });
-
-        const data = await res.json();
-        removeTypingIndicator();
-        renderApiResponse(data);
+        await handleStreamResponse(res);
     } catch (e) {
         removeTypingIndicator();
         appendAssistantMessage(`<p style="color:var(--danger)">Error: ${e.message}</p>`);
@@ -221,8 +411,9 @@ async function submitChatMessage(query) {
 }
 
 async function uploadPdfFile(file) {
-    appendUserMessage(`Uploaded Document: <strong>${file.name}</strong>`);
-    showTypingIndicator();
+    const attachmentContainer = document.getElementById("attachmentContainer");
+    attachmentContainer.style.display = "flex";
+    attachmentContainer.innerHTML = `<i class="fa-solid fa-file-pdf" style="color:var(--danger)"></i> <strong>${file.name}</strong> <i class="fa-solid fa-spinner fa-spin" style="margin-left:8px;"></i> Extracting...`;
     
     const formData = new FormData();
     formData.append("file", file);
@@ -234,59 +425,200 @@ async function uploadPdfFile(file) {
             body: formData
         });
         const data = await res.json();
-        removeTypingIndicator();
-        renderApiResponse(data);
+        
+        if (res.ok && data.success) {
+            currentDocContext = data.extracted_text;
+            currentDocFilename = data.filename;
+            
+            attachmentContainer.innerHTML = `
+                <i class="fa-solid fa-file-circle-check" style="color:var(--success)"></i> 
+                <strong>${data.filename}</strong>
+                <button type="button" onclick="clearAttachment()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; margin-left:8px;"><i class="fa-solid fa-times"></i></button>
+            `;
+            // Enable the send button since a document is attached
+            document.getElementById("btnSendChat").disabled = false;
+        } else {
+            throw new Error(data.detail || "Upload failed");
+        }
     } catch (e) {
-        removeTypingIndicator();
-        appendAssistantMessage(`<p style="color:var(--danger)">Error uploading PDF: ${e.message}</p>`);
+        attachmentContainer.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color:var(--danger)"></i> <strong>Upload Error</strong>: ${e.message}`;
     }
 }
 
-function renderApiResponse(data) {
-    let html = "";
+function clearAttachment() {
+    currentDocContext = null;
+    currentDocFilename = null;
+    const attachmentContainer = document.getElementById("attachmentContainer");
+    attachmentContainer.style.display = "none";
+    attachmentContainer.innerHTML = "";
+    document.getElementById('pdfFileInput').value = "";
+    
+    // Disable send button if chat input is empty
+    const chatInput = document.getElementById("chatInput");
+    document.getElementById("btnSendChat").disabled = chatInput.value.trim() === "";
+}
 
-    // 1. Clarification Request
-    if (data.requires_user_clarification) {
-        document.body.dataset.pendingClarification = "true";
-        html += `<p><i class="fa-solid fa-triangle-exclamation" style="color:var(--warning)"></i> <strong>Clarification Required</strong></p>`;
-        html += `<p>${data.clarification_prompt}</p>`;
-        appendAssistantMessage(html);
-        return; // Stop here, wait for user reply
-    }
+async function handleStreamResponse(res) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    
+    removeTypingIndicator();
+    const msgDiv = appendAssistantMessage("");
+    const msgContent = msgDiv.querySelector(".message-content");
+    
+    let mdText = "";
+    let planSteps = [];
+    let flagsHtml = "";
+    let sourcesHtml = "";
+    let liveNodes = new Set();
+    let isDone = false;
 
-    // 2. Reason Trace Block (Prominent)
-    if (data.reasoning_plan && data.reasoning_plan.length > 0) {
-        html += `
-            <div class="agent-execution-plan card-glass" style="margin-bottom: 16px; padding: 12px; background: rgba(0, 255, 136, 0.05); border-left: 3px solid var(--success);">
-                <div style="font-weight: 600; font-size: 0.9em; margin-bottom: 8px; color: var(--success); text-transform: uppercase; letter-spacing: 0.5px;">
-                    <i class="fa-solid fa-microchip"></i> Agent Execution Trace
-                </div>
-                <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.85em; color: var(--text-muted);">
-                    ${data.reasoning_plan.map(step => `<li style="margin-bottom: 4px;"><i class="fa-solid fa-check" style="color:var(--success); margin-right: 6px;"></i> ${step}</li>`).join('')}
-                </ul>
+    function buildSourcesHtml(sources) {
+        if (!sources || sources.length === 0) return "";
+        const rows = sources.map((s, i) => {
+            const url = s.url || "";
+            const nameCell = url
+                ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="src-link">
+                     <i class="fa-solid fa-file-arrow-down"></i> ${s.name}
+                   </a>`
+                : `<span>${s.name}</span>`;
+            return `<tr>
+                <td class="src-num">${i + 1}</td>
+                <td class="src-name">${nameCell}</td>
+                <td><span class="src-badge">${s.type}</span></td>
+                <td class="src-clause">${s.clause || '-'}</td>
+                <td class="src-page">p.${s.page}</td>
+            </tr>`;
+        }).join("");
+        return `<div class="sources-card">
+            <div class="sources-card-header">
+                <i class="fa-solid fa-book-bookmark"></i> Sources Referenced
+                <span class="sources-count">${sources.length} document${sources.length !== 1 ? 's' : ''}</span>
             </div>
-        `;
+            <div class="sources-table-wrap">
+                <table class="sources-table">
+                    <thead>
+                        <tr><th>#</th><th>Document</th><th>Type</th><th>Clause / Rule</th><th>Page</th></tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>`;
     }
 
-    // 3. Compliance Risk Badges
-    if (data.compliance_risk_flags && data.compliance_risk_flags.length > 0) {
-        html += `<div style="margin: 12px 0;">`;
-        data.compliance_risk_flags.forEach((r) => {
-            html += `<div class="risk-badge ${r.severity}">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-                <span>${r.message}</span>
+    // Map of node names to display info
+    const NODE_META = {
+        "security_guardrail": { icon: "fa-shield-halved", label: "Security Check", color: "#6366F1" },
+        "router":             { icon: "fa-code-branch",   label: "Intent Router",  color: "#06B6D4" },
+        "planner":            { icon: "fa-brain",          label: "Query Planning", color: "#8B5CF6" },
+        "retrieval":          { icon: "fa-magnifying-glass",label: "Retrieving Docs",color: "#F59E0B" },
+        "sufficiency_check":  { icon: "fa-filter",         label: "Sufficiency Check",color: "#14B8A6" },
+        "multi_agent_eval":   { icon: "fa-robot",          label: "Multi-Agent Eval",color: "#EC4899" },
+        "synthesis":          { icon: "fa-pen-nib",         label: "Drafting Opinion",color: "#10B981" },
+        "chitchat":           { icon: "fa-comments",       label: "Responding",     color: "#06B6D4" },
+    };
+    
+    function buildPipelineHtml() {
+        if (liveNodes.size === 0) return "";
+        let items = "";
+        [...liveNodes].forEach((n, idx) => {
+            const meta = NODE_META[n] || { icon: "fa-gear", label: n, color: "var(--success)" };
+            const isLast = idx === liveNodes.size - 1 && !isDone;
+            items += `
+            <div class="exec-step">
+                <div class="exec-step-icon" style="background: ${meta.color}22; border-color: ${meta.color};">
+                    ${isLast
+                        ? `<i class="fa-solid fa-spinner fa-spin" style="color:${meta.color}"></i>`
+                        : `<i class="fa-solid ${meta.icon}" style="color:${meta.color}"></i>`}
+                </div>
+                <div class="exec-step-content">
+                    <span class="exec-step-label" style="color:${meta.color}">${meta.label}</span>
+                    ${!isLast ? '<span class="exec-step-done"><i class="fa-solid fa-check"></i> Done</span>' : '<span class="exec-step-running">Running…</span>'}
+                </div>
             </div>`;
         });
-        html += `</div>`;
+        return `<div class="exec-pipeline">${items}</div>`;
     }
 
-    // 4. Main Markdown Content
-    const md = data.markdown_output || data.final_markdown_output || "";
-    if (md) {
-        html += `<div class="markdown-body">${marked.parse(md)}</div>`;
+    function buildPlanHtml() {
+        if (planSteps.length === 0) return "";
+        const items = planSteps.map((step, i) =>
+            `<li class="plan-step"><span class="plan-step-num">${i + 1}</span><span class="plan-step-text">${step}</span></li>`
+        ).join("");
+        return `<div class="plan-trace">
+            <div class="plan-trace-header"><i class="fa-solid fa-list-check"></i> Reasoning Plan</div>
+            <ol class="plan-step-list">${items}</ol>
+        </div>`;
+    }
+    
+    function updateDisplay() {
+        let finalHtml = buildPipelineHtml() + buildPlanHtml() + flagsHtml;
+        if (mdText) {
+            finalHtml += `<div class="markdown-body">${marked.parse(mdText)}</div>`;
+        }
+        if (sourcesHtml) {
+            finalHtml += sourcesHtml;
+        }
+        msgContent.innerHTML = finalHtml;
+        const feed = document.getElementById("chatFeed");
+        feed.scrollTop = feed.scrollHeight;
     }
 
-    appendAssistantMessage(html);
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+        
+        for (let line of lines) {
+            if (line.startsWith("data: ")) {
+                const dataStr = line.replace("data: ", "").trim();
+                if (!dataStr) continue;
+                try {
+                    const data = JSON.parse(dataStr);
+                    if (data.type === "node_status") {
+                        liveNodes.add(data.node);
+                        updateDisplay();
+                    } else if (data.type === "plan") {
+                        planSteps = data.content;
+                        updateDisplay();
+                    } else if (data.type === "clarification") {
+                        document.body.dataset.pendingClarification = "true";
+                        isDone = true;
+                        let html = `<p><i class="fa-solid fa-triangle-exclamation" style="color:var(--warning)"></i> <strong>Clarification Required</strong></p>`;
+                        html += `<p>${data.content}</p>`;
+                        msgContent.innerHTML = html;
+                    } else if (data.type === "flags") {
+                        flagsHtml = `<div style="margin: 12px 0;">`;
+                        data.content.forEach((r) => {
+                            flagsHtml += `<div class="risk-badge ${r.severity}">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                                <span>${r.message}</span>
+                            </div>`;
+                        });
+                        flagsHtml += `</div>`;
+                        updateDisplay();
+                    } else if (data.type === "sources") {
+                        sourcesHtml = buildSourcesHtml(data.content);
+                        // Don't call updateDisplay here — it renders after tokens start
+                    } else if (data.type === "token") {
+                        mdText += data.content;
+                        updateDisplay();
+                    } else if (data.type === "done") {
+                        isDone = true;
+                        updateDisplay();
+                        loadThreads();
+                    } else if (data.type === "error") {
+                        isDone = true;
+                        msgContent.innerHTML += `<p style="color:var(--danger)">Error: ${data.content}</p>`;
+                    }
+                } catch(e) {
+                    console.error("Error parsing stream JSON", e, dataStr);
+                }
+            }
+        }
+    }
 }
 
 // --- Admin Modal Functions ---
