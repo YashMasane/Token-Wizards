@@ -19,10 +19,15 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing SQLite Database...")
     init_db()
     
-    logger.info("Auto-populating and indexing 6 Mock Legal Corpus documents...")
-    chunks = load_mock_corpus_documents()
-    hybrid_retriever.index_documents(chunks)
-    logger.info(f"Knowledge Base ready with {len(chunks)} statutory chunks.")
+    from app.db import get_all_registered_documents
+    existing_docs = get_all_registered_documents()
+    if not existing_docs:
+        logger.info("Auto-populating and indexing Mock Legal Corpus documents...")
+        chunks = load_mock_corpus_documents()
+        hybrid_retriever.index_documents(chunks)
+        logger.info(f"Knowledge Base ready with {len(chunks)} statutory chunks.")
+    else:
+        logger.info(f"Knowledge Base already populated with {len(existing_docs)} documents. Skipping auto-population to prevent reload loops.")
 
     # LLM connectivity health check — runs at startup to surface config problems early
     logger.info("Running LLM connectivity health check...")

@@ -80,7 +80,7 @@ def classify_pdf_metadata(filename: str, text: str) -> Dict[str, Any]:
     meta["download_url"] = f"/api/documents/download/{meta['doc_id']}"
     return meta
 
-def load_mock_corpus_documents() -> List[Dict[str, Any]]:
+def load_mock_corpus_documents(skip_db: bool = False) -> List[Dict[str, Any]]:
     """
     Loads statutory documents directly from PDF files in data/mock_corpus/ using pdfplumber.
     Falls back to JSON documents if PDFs are not present.
@@ -101,7 +101,8 @@ def load_mock_corpus_documents() -> List[Dict[str, Any]]:
 
                 # Skip application form from legal vector database
                 if meta["doc_type"] == "Application" or meta["doc_id"] == "sample_form_b7":
-                    register_corpus_document(meta)
+                    if not skip_db:
+                        register_corpus_document(meta)
                     continue
 
                 register_corpus_document(meta)
@@ -152,10 +153,12 @@ def load_mock_corpus_documents() -> List[Dict[str, Any]]:
                 doc_data = json.load(f)
 
             if doc_data.get("doc_type") == "Application" or doc_data.get("doc_id") == "sample_form_b7":
-                register_corpus_document(doc_data)
+                if not skip_db:
+                    register_corpus_document(doc_data)
                 continue
 
-            register_corpus_document(doc_data)
+            if not skip_db:
+                register_corpus_document(doc_data)
             doc_id = doc_data["doc_id"]
             
             for sec in doc_data.get("sections", []):

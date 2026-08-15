@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # Embeddings & Vector Database
     EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
     EMBEDDING_DIMENSION: int = 384
-    CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", "./data/chroma_db")
-    SQLITE_DB_PATH: str = os.getenv("SQLITE_DB_PATH", "./data/app.db")
+    CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", "./.data/chroma_db")
+    SQLITE_DB_PATH: str = os.getenv("SQLITE_DB_PATH", "./.data/app.db")
     
     # RAG & Graph Parameters
     SLIDING_WINDOW_SIZE: int = int(os.getenv("SLIDING_WINDOW_SIZE", "6"))
