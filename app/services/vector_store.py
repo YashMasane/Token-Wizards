@@ -52,7 +52,7 @@ class EmbeddingManager:
         try:
             from sentence_transformers import SentenceTransformer
             logger.info(f"Loading Embedding Model: {settings.EMBEDDING_MODEL_NAME}")
-            self.model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
+            self.model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME, trust_remote_code=True)
             self.is_fallback = False
         except Exception as e:
             logger.warning(f"sentence_transformers not available ({e}). Using FallbackEmbeddingManager.")
@@ -89,7 +89,7 @@ class VectorStoreService:
         logger.info(f"Initializing ChromaDB PersistentClient at {persist_dir}")
         self.chroma_client = chromadb.PersistentClient(path=persist_dir)
         self.collection = self.chroma_client.get_or_create_collection(
-            name="legal_documents",
+            name="legal_documents_v2",
             metadata={"hnsw:space": "cosine"}
         )
         self._is_indexed = self.collection.count() > 0

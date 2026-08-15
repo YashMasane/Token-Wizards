@@ -4,6 +4,7 @@ import json
 import re
 import logging
 from typing import List, Dict, Any
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.db import register_corpus_document
 from app.services.pdf_parser import parse_pdf_document
 
@@ -121,22 +122,30 @@ def load_mock_corpus_documents(skip_db: bool = False) -> List[Dict[str, Any]]:
                     if tables:
                         content_full += "\n\n### Extracted Tables:\n" + "\n\n".join(tables)
 
-                    chunk_payload = {
-                        "chunk_id": f"{meta['doc_id']}_p{page_num}",
-                        "doc_id": meta["doc_id"],
-                        "document_name": meta["document_name"],
-                        "doc_type": meta["doc_type"],
-                        "issuing_authority": meta["issuing_authority"],
-                        "doc_date": meta["date"],
-                        "is_outdated": meta["is_outdated"],
-                        "superseded_by": meta["superseded_by"],
-                        "page_number": page_num,
-                        "heading": f"{meta['document_name']} (Page {page_num})",
-                        "clause_or_rule": clause_str,
-                        "content": content_full,
-                        "download_url": meta["download_url"]
-                    }
-                    documents.append(chunk_payload)
+                    text_splitter = RecursiveCharacterTextSplitter(
+                        chunk_size=1000,
+                        chunk_overlap=200,
+                        separators=["\n\n", "\n", " ", ""]
+                    )
+                    sub_chunks = text_splitter.split_text(content_full)
+
+                    for idx, chunk_text in enumerate(sub_chunks):
+                        chunk_payload = {
+                            "chunk_id": f"{meta['doc_id']}_p{page_num}_{idx}",
+                            "doc_id": meta["doc_id"],
+                            "document_name": meta["document_name"],
+                            "doc_type": meta["doc_type"],
+                            "issuing_authority": meta["issuing_authority"],
+                            "doc_date": meta["date"],
+                            "is_outdated": meta["is_outdated"],
+                            "superseded_by": meta["superseded_by"],
+                            "page_number": page_num,
+                            "heading": f"{meta['document_name']} (Page {page_num})",
+                            "clause_or_rule": clause_str,
+                            "content": chunk_text,
+                            "download_url": meta["download_url"]
+                        }
+                        documents.append(chunk_payload)
 
             except Exception as e:
                 logger.error(f"Error extracting PDF corpus file {pdf_path}: {e}")
@@ -162,22 +171,31 @@ def load_mock_corpus_documents(skip_db: bool = False) -> List[Dict[str, Any]]:
             doc_id = doc_data["doc_id"]
             
             for sec in doc_data.get("sections", []):
-                chunk_id = f"{doc_id}_{sec.get('section_number', '').replace(' ', '_')}"
-                documents.append({
-                    "chunk_id": chunk_id,
-                    "doc_id": doc_id,
-                    "document_name": doc_data["document_name"],
-                    "doc_type": doc_data["doc_type"],
-                    "issuing_authority": doc_data.get("issuing_authority", ""),
-                    "doc_date": doc_data.get("date", ""),
-                    "is_outdated": doc_data.get("is_outdated", False),
-                    "superseded_by": doc_data.get("superseded_by"),
-                    "page_number": sec.get("page_number", 1),
-                    "heading": sec.get("heading", ""),
-                    "clause_or_rule": sec.get("section_number", ""),
-                    "content": sec.get("content", ""),
-                    "download_url": doc_data.get("download_url", f"/api/documents/download/{doc_id}")
-                })
+                sec_content = sec.get("content", "")
+                text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=1000,
+                    chunk_overlap=200,
+                    separators=["\n\n", "\n", " ", ""]
+                )
+                sub_chunks = text_splitter.split_text(sec_content)
+
+                for idx, chunk_text in enumerate(sub_chunks):
+                    chunk_id = f"{doc_id}_{sec.get('section_number', '').replace(' ', '_')}_{idx}"
+                    documents.append({
+                        "chunk_id": chunk_id,
+                        "doc_id": doc_id,
+                        "document_name": doc_data["document_name"],
+                        "doc_type": doc_data["doc_type"],
+                        "issuing_authority": doc_data.get("issuing_authority", ""),
+                        "doc_date": doc_data.get("date", ""),
+                        "is_outdated": doc_data.get("is_outdated", False),
+                        "superseded_by": doc_data.get("superseded_by"),
+                        "page_number": sec.get("page_number", 1),
+                        "heading": sec.get("heading", ""),
+                        "clause_or_rule": sec.get("section_number", ""),
+                        "content": chunk_text,
+                        "download_url": doc_data.get("download_url", f"/api/documents/download/{doc_id}")
+                    })
         except Exception as e:
             logger.error(f"Error loading JSON corpus file {jf}: {e}")
 
