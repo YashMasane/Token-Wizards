@@ -12,10 +12,12 @@ langchain-community>=0.0.25
 langchain-core>=0.1.28
 langchain-groq>=0.0.3
 langchain-openai>=0.0.8
+langchain-text-splitters>=0.0.1
 
 # RAG & Vector Database
 chromadb>=0.4.22
 sentence-transformers>=2.3.1
+einops>=0.7.0
 rank-bm25>=0.2.2
 
 # PDF Processing
