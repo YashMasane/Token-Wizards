@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Law & LSGD Copilot</title>
+    <!-- Fonts -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/styles.css">
+    <!-- Markdown parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="app-wrapper">
+        <!-- Sidebar: Context & Actions -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fa-solid fa-scale-balanced logo-icon"></i>
+                    <div>
+                        <h2>Token-Wizards</h2>
+                        <span class="sub-logo">Legal Intelligence</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-content">
+                <div class="panel card-glass chat-history-panel">
+                    <h3><i class="fa-solid fa-clock-rotate-left"></i> Chat History</h3>
+                    <div id="threadList" class="thread-list">
+                        <div class="loading-threads">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <button class="btn-admin" id="openAdminBtn">
+                    <i class="fa-solid fa-database"></i> Knowledge Base
+                </button>
+                <div class="model-indicator">
+                    <div class="status-dot"></div>
+                    <span id="activeModelLabel">Connecting...</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Interface -->
+        <main class="chat-container">
+            <!-- Header -->
+            <header class="chat-header glass-header">
+                <div class="chat-title">
+                    <h3>Law & LSGD Copilot</h3>
+                    <span class="badge">Kerala Building Rules 2022</span>
+                </div>
+                <div class="chat-actions">
+                    <button class="icon-btn" onclick="clearChat()" title="New Chat"><i class="fa-solid fa-pen-to-square"></i></button>
+                </div>
+            </header>
+
+            <!-- Chat Feed -->
+            <div class="chat-feed" id="chatFeed">
+                <!-- Welcome Message -->
+                <div class="message assistant-message">
+                    <div class="avatar"><i class="fa-solid fa-scale-balanced"></i></div>
+                    <div class="message-content">
+                        <p>Greetings, Officer! I am your AI Copilot for the <strong>Law Department and Local Self Government Department (LSGD)</strong>.</p>
+                        <p>You can:</p>
+                        <ul>
+                            <li>Submit a building permit context from the sidebar to evaluate compliance.</li>
+                            <li>Ask me statutory questions (e.g., "What is the setback rule for a 5000 sqm building near Vembanad lake?").</li>
+                            <li>Upload PDFs for direct evaluation.</li>
+                        </ul>
+                        <p>How can I assist you today?</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="chat-input-wrapper glass-footer">
+                <form id="chatInputForm" class="chat-input-form">
+                    <div class="input-actions">
+                        <button type="button" class="btn-attach" onclick="document.getElementById('pdfFileInput').click()" title="Upload File">
+                            <i class="fa-solid fa-plus"></i> Upload File
+                        </button>
+                        <input type="file" id="pdfFileInput" accept=".pdf" hidden>
+                    </div>
+                    <textarea id="chatInput" placeholder="Ask a legal query or reply to a clarification..." rows="1"></textarea>
+                    <button type="submit" class="btn-send" id="btnSendChat" disabled>
+                        <i class="fa-solid fa-arrow-up"></i>
+                    </button>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <!-- Admin Knowledge Base Management Modal (Kept mostly same, just styled differently) -->
+    <div class="modal" id="adminModal" style="display: none;">
+        <div class="modal-content glass-modal">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-database"></i> Knowledge Base Admin</h3>
+                <button class="close-btn" onclick="closeAdminModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="card-glass mb-4">
+                    <h4>Upload New Legal Document</h4>
+                    <form id="adminUploadForm" class="form-grid">
+                        <input type="text" id="adminDocId" placeholder="Doc ID (slug)" required>
+                        <input type="text" id="adminDocName" placeholder="Document Name" required>
+                        <div class="form-row">
+                            <select id="adminDocType">
+                                <option value="Rules">Rules / Act</option>
+                                <option value="Government Order">Government Order</option>
+                                <option value="Circular">Circular</option>
+                                <option value="Judgment">Judgment</option>
+                            </select>
+                            <input type="text" id="adminAuthority" placeholder="Authority">
+                        </div>
+                        <input type="file" id="adminFile" accept=".json,.txt" required class="file-input">
+                        <button type="submit" class="btn-primary mt-2"><i class="fa-solid fa-upload"></i> Upload & Re-Index</button>
+                    </form>
+                </div>
+                <div class="card-glass">
+                    <h4>Active Corpus</h4>
+                    <div id="corpusDocList" class="corpus-list"></div>
+                    <button class="btn-secondary w-full mt-2" onclick="triggerReindex()"><i class="fa-solid fa-rotate"></i> Re-Index Knowledge Base</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
