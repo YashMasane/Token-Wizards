@@ -165,9 +165,19 @@ function setupEventListeners() {
     const btnSendChat = document.getElementById("btnSendChat");
     const chatForm = document.getElementById("chatInputForm");
 
+    // Auto-grow textarea: overflow must be hidden while measuring scrollHeight,
+    // otherwise the browser shows a scrollbar instead of reporting the true content height.
+    function autoGrow(el) {
+        el.style.overflow = 'hidden';          
+        el.style.height = '1px';              // Force collapse so scrollHeight calculates true content size
+        const newH = Math.min(el.scrollHeight, 200);
+        el.style.height = newH + 'px';
+        // Only show scrollbar once the cap (200px) is exceeded
+        el.style.overflowY = el.scrollHeight > 200 ? 'auto' : 'hidden';
+    }
+
     chatInput.addEventListener("input", function() {
-        this.style.height = 'auto';
-        this.style.height = (this.scrollHeight) + 'px';
+        autoGrow(this);
         btnSendChat.disabled = this.value.trim() === "";
     });
 
@@ -177,7 +187,7 @@ function setupEventListeners() {
         if (query || currentDocFilename) {
             submitChatMessage(query);
             chatInput.value = "";
-            chatInput.style.height = 'auto';
+            autoGrow(chatInput);   // snap back to single-line height
             btnSendChat.disabled = true;
             document.getElementById("attachmentContainer").style.display = "none";
             document.getElementById("attachmentContainer").innerHTML = "";
@@ -238,8 +248,9 @@ function appendUserMessage(text, metadataHtml = "") {
     div.innerHTML = `
         <div class="avatar"><i class="fa-solid fa-user"></i></div>
         <div class="message-content">
-            <p>${text}</p>
+            <div class="msg-text">${text}</div>
             ${metadataHtml}
+            <button class="copy-btn user-copy" onclick="copyToClipboard(this)" title="Copy prompt"><i class="fa-regular fa-copy"></i></button>
         </div>
     `;
     feed.appendChild(div);
@@ -256,6 +267,7 @@ function appendAssistantMessage(htmlContent) {
         <div class="avatar"><i class="fa-solid fa-scale-balanced"></i></div>
         <div class="message-content">
             ${htmlContent}
+            <button class="copy-btn assistant-copy" onclick="copyToClipboard(this)" title="Copy response"><i class="fa-regular fa-copy"></i></button>
         </div>
     `;
     feed.appendChild(div);
@@ -289,11 +301,35 @@ function removeTypingIndicator() {
 
 function clearChat() {
     currentThreadId = "session_" + Date.now();
-    const feed = document.getElementById("chatFeed");
-    // Keep only the first welcome message
-    const firstMsg = feed.firstElementChild;
-    feed.innerHTML = "";
-    if (firstMsg) feed.appendChild(firstMsg);
+    document.getElementById("chatFeed").innerHTML = "";
+}
+
+window.copyToClipboard = function(btn) {
+    const msgContent = btn.parentElement;
+    let textToCopy = "";
+    if (btn.classList.contains("user-copy")) {
+        const p = msgContent.querySelector(".msg-text");
+        if (p) textToCopy = p.innerText;
+    } else {
+        const mdBody = msgContent.querySelector(".markdown-body");
+        if (mdBody) {
+            textToCopy = mdBody.innerText;
+        } else {
+            textToCopy = msgContent.innerText;
+        }
+    }
+    
+    if (textToCopy) {
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            const icon = btn.querySelector("i");
+            icon.className = "fa-solid fa-check";
+            btn.style.color = "var(--success)";
+            setTimeout(() => {
+                icon.className = "fa-regular fa-copy";
+                btn.style.color = "";
+            }, 2000);
+        });
+    }
 }
 
 // --- API Interactions ---
@@ -468,6 +504,7 @@ async function handleStreamResponse(res) {
     
     let mdText = "";
     let planSteps = [];
+    let legalPlanData = null;   // structured LegalReasoningPlan dict
     let flagsHtml = "";
     let sourcesHtml = "";
     let liveNodes = new Set();
@@ -514,7 +551,8 @@ async function handleStreamResponse(res) {
         "retrieval":          { icon: "fa-magnifying-glass",label: "Retrieving Docs",color: "#F59E0B" },
         "sufficiency_check":  { icon: "fa-filter",         label: "Sufficiency Check",color: "#14B8A6" },
         "multi_agent_eval":   { icon: "fa-robot",          label: "Multi-Agent Eval",color: "#EC4899" },
-        "synthesis":          { icon: "fa-pen-nib",         label: "Drafting Opinion",color: "#10B981" },
+        "synthesis":          { icon: "fa-pen-nib",         label: "Writing Draft",color: "#10B981" },
+        "critic":             { icon: "fa-user-check",     label: "Auditing Draft", color: "#DC2626" },
         "chitchat":           { icon: "fa-comments",       label: "Responding",     color: "#06B6D4" },
     };
     
@@ -540,7 +578,66 @@ async function handleStreamResponse(res) {
         return `<div class="exec-pipeline">${items}</div>`;
     }
 
+    const QUERY_TYPE_LABELS = {
+        permit_evaluation:   { icon: "fa-building",        label: "Permit Evaluation" },
+        legal_question:      { icon: "fa-scale-balanced",  label: "Legal Question" },
+        compliance_audit:    { icon: "fa-clipboard-check", label: "Compliance Audit" },
+        precedent_research:  { icon: "fa-gavel",           label: "Precedent Research" },
+        document_review:     { icon: "fa-file-magnifying-glass", label: "Document Review" },
+        noc_clearance:       { icon: "fa-stamp",           label: "NOC / Clearance" },
+        setback_zone_query:  { icon: "fa-ruler-combined",  label: "Setback / Zone Query" },
+        go_interpretation:   { icon: "fa-scroll",          label: "GO Interpretation" },
+        appeal_or_challenge: { icon: "fa-triangle-exclamation", label: "Appeal / Challenge" },
+        general:             { icon: "fa-circle-question", label: "General Query" },
+    };
+
     function buildPlanHtml() {
+        // ── Rich plan card (structured LegalReasoningPlan) ────────────────────
+        if (legalPlanData && legalPlanData.steps && legalPlanData.steps.length > 0) {
+            const qt  = legalPlanData.query_type || "general";
+            const qm  = QUERY_TYPE_LABELS[qt] || QUERY_TYPE_LABELS.general;
+            const complexity = legalPlanData.estimated_complexity || "medium";
+            const complexityColor = { low: "#10B981", medium: "#F59E0B", high: "#EF4444" }[complexity] || "#8B5CF6";
+
+            // Applicable laws pills
+            const lawsPills = (legalPlanData.applicable_laws || []).map(law =>
+                `<span class="plan-law-pill"><i class="fa-solid fa-book-open-reader"></i> ${law}</span>`
+            ).join("");
+
+            // Strategy badge
+            const strategyLabel = {
+                statutory_first: "📜 Statutory First",
+                go_focused:      "📋 GO Focused",
+                precedent_led:   "⚖️ Precedent Led",
+                balanced:        "🔄 Balanced",
+            }[legalPlanData.retrieval_strategy] || legalPlanData.retrieval_strategy;
+
+            // Step cards
+            const stepCards = legalPlanData.steps.map(step => `
+                <div class="plan-step-card">
+                    <div class="plan-step-card-header">
+                        <span class="plan-step-num">${step.step_id}</span>
+                        <span class="plan-step-action">${step.action}</span>
+                    </div>
+                    ${step.legal_focus ? `<div class="plan-step-focus"><i class="fa-solid fa-bookmark" style="color:#8B5CF6"></i> ${step.legal_focus}</div>` : ""}
+                    ${step.target_sources && step.target_sources.length ? `<div class="plan-step-sources">${step.target_sources.map(s => `<span class="plan-source-tag">${s}</span>`).join("")}</div>` : ""}
+                    ${step.expected_output ? `<div class="plan-step-output"><i class="fa-solid fa-arrow-right" style="color:#10B981; font-size:0.75rem;"></i> ${step.expected_output}</div>` : ""}
+                </div>
+            `).join("");
+
+            return `<div class="plan-trace plan-trace-rich">
+                <div class="plan-trace-header">
+                    <i class="fa-solid fa-${qm.icon}"></i> ${qm.label}
+                    <span class="plan-complexity-badge" style="background:${complexityColor}22; color:${complexityColor}; border-color:${complexityColor}44">${complexity.toUpperCase()} COMPLEXITY</span>
+                </div>
+                ${legalPlanData.summary ? `<div class="plan-summary">${legalPlanData.summary}</div>` : ""}
+                ${lawsPills ? `<div class="plan-laws-row">${lawsPills}</div>` : ""}
+                <div class="plan-strategy"><i class="fa-solid fa-route"></i> Strategy: ${strategyLabel}</div>
+                <div class="plan-steps-grid">${stepCards}</div>
+            </div>`;
+        }
+
+        // ── Fallback: flat list (legacy / clarification pending) ──────────────
         if (planSteps.length === 0) return "";
         const items = planSteps.map((step, i) =>
             `<li class="plan-step"><span class="plan-step-num">${i + 1}</span><span class="plan-step-text">${step}</span></li>`
@@ -552,13 +649,36 @@ async function handleStreamResponse(res) {
     }
     
     function updateDisplay() {
-        let finalHtml = buildPipelineHtml() + buildPlanHtml() + flagsHtml;
+        const streamHtml = buildPipelineHtml() + buildPlanHtml() + flagsHtml;
+        let finalHtml = "";
+        
+        if (streamHtml) {
+            const isStreamExpanded = !isDone;
+            const toggleIcon = isStreamExpanded ? "fa-chevron-up" : "fa-chevron-down";
+            const displayStyle = isStreamExpanded ? "block" : "none";
+            
+            finalHtml += `
+            <div class="stream-accordion">
+                <div class="stream-accordion-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'; const i = this.querySelector('i.fa-solid:last-child'); if(i.classList.contains('fa-chevron-down')) { i.classList.replace('fa-chevron-down', 'fa-chevron-up'); } else { i.classList.replace('fa-chevron-up', 'fa-chevron-down'); }">
+                    <span><i class="fa-solid fa-bolt"></i> Execution Stream</span>
+                    <i class="fa-solid ${toggleIcon}"></i>
+                </div>
+                <div class="stream-accordion-body" style="display: ${displayStyle};">
+                    ${streamHtml}
+                </div>
+            </div>`;
+        }
+
         if (mdText) {
             finalHtml += `<div class="markdown-body">${marked.parse(mdText)}</div>`;
         }
         if (sourcesHtml) {
             finalHtml += sourcesHtml;
         }
+        
+        // Add copy button
+        finalHtml += `<button class="copy-btn assistant-copy" onclick="copyToClipboard(this)" title="Copy response"><i class="fa-regular fa-copy"></i></button>`;
+        
         msgContent.innerHTML = finalHtml;
         const feed = document.getElementById("chatFeed");
         feed.scrollTop = feed.scrollHeight;
@@ -582,6 +702,9 @@ async function handleStreamResponse(res) {
                         updateDisplay();
                     } else if (data.type === "plan") {
                         planSteps = data.content;
+                        updateDisplay();
+                    } else if (data.type === "legal_plan") {
+                        legalPlanData = data.content;
                         updateDisplay();
                     } else if (data.type === "clarification") {
                         document.body.dataset.pendingClarification = "true";
