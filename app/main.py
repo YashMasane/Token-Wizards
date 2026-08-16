@@ -19,15 +19,11 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing SQLite Database...")
     init_db()
     
-    from app.db import get_all_registered_documents
-    existing_docs = get_all_registered_documents()
-    if not existing_docs:
-        logger.info("Auto-populating and indexing Mock Legal Corpus documents...")
-        chunks = load_mock_corpus_documents()
-        hybrid_retriever.index_documents(chunks)
-        logger.info(f"Knowledge Base ready with {len(chunks)} statutory chunks.")
-    else:
-        logger.info(f"Knowledge Base already populated with {len(existing_docs)} documents. Skipping auto-population to prevent reload loops.")
+    # Always load chunks to initialize in-memory BM25 & Fallback Vocab
+    logger.info("Auto-populating and indexing Mock Legal Corpus documents into memory...")
+    chunks = load_mock_corpus_documents()
+    hybrid_retriever.index_documents(chunks)
+    logger.info(f"Knowledge Base ready with {len(chunks)} statutory chunks.")
 
     # LLM connectivity health check — runs at startup to surface config problems early
     logger.info("Running LLM connectivity health check...")
@@ -83,5 +79,12 @@ async def root():
     from fastapi.responses import FileResponse
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
-        return FileResponse(index_path)
+        return FileResponse(
+            index_path,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            }
+        )
     return {"message": f"Welcome to {settings.APP_NAME} v{settings.VERSION}"}
