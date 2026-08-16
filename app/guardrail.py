@@ -22,7 +22,7 @@ You must ALLOW (is_allowed: true) the input if it is:
 Return ONLY a valid JSON object matching this schema:
 {
   "is_allowed": true | false,
-  "reasoning_message": "Allowed" | "A clear, polite rejection message explaining why the input was blocked."
+  "reasoning_message": "Allowed" | "A polite rejection message stating that you do not have expertise in this area (e.g., programming, general knowledge) and can only assist with legal matters."
 }
 """
 
@@ -94,7 +94,7 @@ def evaluate_security_and_scope(user_input: str, provider: str = None) -> Tuple[
         if not is_allowed:
             logger.warning(f"[Guardrail] SECURITY BLOCK: {reasoning} | Input='{user_input[:80]}...'")
             # Format the output nicely
-            formatted_reasoning = f"⚠️ **Security Boundary — Access Denied**\n\n{reasoning}\n\nIf you believe this is a false positive, please rephrase your query."
+            formatted_reasoning = f"{reasoning}\n\nIf you need help with legal matters regarding building permits or regulations, feel free to ask!"
             return False, formatted_reasoning
         else:
             logger.info(f"[Guardrail] Input cleared security checks: '{user_input[:60]}...'")
