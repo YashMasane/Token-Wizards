@@ -10,6 +10,8 @@ class LegalAssistantState(TypedDict):
     model_name: Optional[str]      # model name override from API request
     document_context: Optional[str]   # Full text of user-uploaded document (Approach B)
     document_filename: Optional[str]  # Original filename for display
+    is_clarification_response: bool   # True when the user is answering a clarification question
+    user_answers: Dict[str, str]      # Accumulated clarification answers keyed by parameter name
     
     # Planner Agent Artifacts
     system_error: Optional[str]  # Set when an unrecoverable system error occurs; propagates through graph
@@ -18,8 +20,10 @@ class LegalAssistantState(TypedDict):
     missing_parameters: List[str]
     requires_user_clarification: bool
     clarification_prompt: Optional[str]
-    reasoning_plan: List[str]
+    legal_plan: Optional[Dict[str, Any]]  # Structured LegalReasoningPlan dict from planner agent
+    reasoning_plan: List[str]             # Flat display strings derived from legal_plan.steps
     decomposed_sub_queries: Dict[str, str] # e.g. {"rules": "...", "gos": "...", "judgments": "..."}
+
     
     # Retrieval Artifacts
     retrieved_chunks: List[Dict[str, Any]]
@@ -45,5 +49,5 @@ class LegalAssistantState(TypedDict):
     sources_used: List[Dict[str, Any]]
     critic_verified: bool
     critic_feedback: Optional[str]
-    iteration_count: int
+    critic_iterations: int
     final_markdown_output: Optional[str]

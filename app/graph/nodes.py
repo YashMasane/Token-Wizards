@@ -47,6 +47,16 @@ def _format_system_error(error: Exception) -> str:
 def security_guardrail_node(state: LegalAssistantState) -> Dict[str, Any]:
     raw_input = state["raw_input"]
     model_provider = state.get("model_provider")
+
+    # Skip full guardrail for clarification answers — short measurements like
+    # "5000 sq ft" or "5km" would otherwise be misclassified as out-of-domain.
+    if state.get("is_clarification_response"):
+        logger.info("[Node: SecurityGuardrail] Skipping deep evaluation — input is a clarification response.")
+        return {
+            "is_security_allowed": True,
+            "security_warning": None,
+        }
+
     logger.info(f"[Node: SecurityGuardrail] Evaluating security and scope for input length: {len(raw_input)}")
     is_allowed, msg = evaluate_security_and_scope(raw_input, provider=model_provider)
     return {
@@ -62,6 +72,14 @@ def router_node(state: LegalAssistantState) -> Dict[str, Any]:
     if not state.get("is_security_allowed", True):
         logger.warning("[Node: Router] Security rejected input. Routing to security_violation.")
         return {"input_type": "security_violation"}
+
+    # ── Clarification response: preserve the intent set by the API layer ───────
+    # If we let the LLM re-classify here it will see "5000 sq ft" or similar
+    # and set input_type to "legal_query", wiping "clarification_answer" and
+    # preventing the planner from receiving previous clarification context.
+    if state.get("is_clarification_response"):
+        logger.info("[Node: Router] Input is a clarification response — preserving input_type='clarification_answer'.")
+        return {"input_type": "clarification_answer"}
 
     raw_input = state["raw_input"]
     parsed_form = state.get("parsed_form")
@@ -105,13 +123,22 @@ def planner_node(state: LegalAssistantState) -> Dict[str, Any]:
 
     document_context = state.get("document_context")
 
+    # Pass clarification context so the planner can merge the user's answer and
+    # decide whether more clarification is still needed.
+    previous_clarification_prompt = state.get("clarification_prompt")
+    previous_missing_params = state.get("missing_parameters", [])
+    previous_user_answers = state.get("user_answers", {})
+
     try:
         plan_data = run_planner_agent(
-            raw_input, 
-            parsed_form, 
-            provider=state.get("model_provider"), 
+            raw_input,
+            parsed_form,
+            provider=state.get("model_provider"),
             is_clarification=is_clarification,
-            document_context=document_context
+            document_context=document_context,
+            previous_clarification_prompt=previous_clarification_prompt,
+            previous_missing_params=previous_missing_params,
+            previous_user_answers=previous_user_answers,
         )
     except (AgentExecutionError, LLMConfigurationError) as e:
         logger.error(f"[Node: Planner] Planning failed: {e}")
@@ -126,12 +153,19 @@ def planner_node(state: LegalAssistantState) -> Dict[str, Any]:
         f"[Node: Planner] Requires clarification: {plan_data.get('requires_clarification', False)}. "
         f"Decomposed sub-queries count: {len(plan_data.get('decomposed_sub_queries', {}))}"
     )
+
+    # Merge any newly extracted answers into accumulated user_answers
+    merged_user_answers = dict(previous_user_answers)
+    merged_user_answers.update(plan_data.get("extracted_answers", {}))
+
     return {
         "requires_user_clarification": plan_data.get("requires_clarification", False),
         "clarification_prompt": plan_data.get("clarification_prompt"),
         "missing_parameters": plan_data.get("missing_parameters", []),
+        "legal_plan": plan_data.get("legal_plan"),
         "decomposed_sub_queries": plan_data.get("decomposed_sub_queries", {}),
         "reasoning_plan": plan_data.get("reasoning_plan", []),
+        "user_answers": merged_user_answers,
     }
 
 
@@ -208,8 +242,8 @@ def targeted_retrieval_node(state: LegalAssistantState) -> Dict[str, Any]:
     # 3. Reranking Phase (Cross-Encoder)
     reranked = reranker_service.rerank(raw_input, all_chunks, top_n=15)
 
-    # 4. Compression & Filtering Phase (Filter out chunks with score < 2.0)
-    partitioned = deduplicate_and_partition_chunks(reranked, min_score_threshold=2.0)
+    # 4. Compression & Filtering Phase (Filter out chunks with score < -100.0)
+    partitioned = deduplicate_and_partition_chunks(reranked, min_score_threshold=-100.0)
     filtered_count = partitioned.pop("filtered_out_count", 0)
     
     final_chunks = partitioned.get("all_chunks", [])
@@ -219,6 +253,13 @@ def targeted_retrieval_node(state: LegalAssistantState) -> Dict[str, Any]:
     if final_chunks:
         top_scores = [c.get("rerank_score", c.get("rrf_score", 0)) for c in final_chunks[:3]]
         avg_score = sum(top_scores) / len(top_scores)
+        
+        logger.info(f"[Node: Retrieval] Final {len(final_chunks)} chunks after filtering:")
+        for idx, c in enumerate(final_chunks):
+            score_val = c.get("rerank_score", c.get("rrf_score", "N/A"))
+            logger.info(f"  {idx+1}. [Score: {score_val}] {c.get('document_name')} | ID: {c.get('chunk_id')}")
+    else:
+        logger.warning("[Node: Retrieval] NO chunks survived the filtering phase!")
 
     return {
         "retrieved_chunks": all_chunks,
@@ -357,6 +398,8 @@ def draft_synthesis_node(state: LegalAssistantState) -> Dict[str, Any]:
             risk_flags, chunks, provider=model_provider,
             document_context=state.get("document_context"),
             document_filename=state.get("document_filename"),
+            previous_draft=state.get("draft_opinion"),
+            critic_feedback=state.get("critic_feedback"),
         )
         # agent now returns a (text, sources_list) tuple
         if isinstance(result, tuple):
@@ -369,18 +412,39 @@ def draft_synthesis_node(state: LegalAssistantState) -> Dict[str, Any]:
         return {
             "draft_opinion": error_msg,
             "final_markdown_output": error_msg,
-            "critic_verified": False,
-            "critic_feedback": f"Critic skipped — synthesis failed: {e}",
         }
-
-    # Run Self-Reflective Critic Audit
-    verified, critic_feedback = run_legal_critic_agent(draft, chunks)
-    logger.info(f"[Node: DraftSynthesis] Legal Critic audit result: Verified={verified}, Feedback: '{critic_feedback[:100]}'")
 
     return {
         "draft_opinion": draft,
-        "critic_verified": verified,
-        "critic_feedback": critic_feedback,
         "final_markdown_output": draft,
         "sources_used": structured_sources,
+    }
+
+
+# Node 8: Legal Critic Node
+def legal_critic_node(state: LegalAssistantState) -> Dict[str, Any]:
+    """
+    Evaluates the draft. If it fails, increments critic_iterations.
+    """
+    logger.info("[Node: LegalCritic] Running Legal Critic Audit on draft...")
+    
+    draft = state.get("draft_opinion")
+    if not draft or "An error occurred" in draft:
+        return {
+            "critic_verified": False,
+            "critic_feedback": "Draft was empty or contained a system error.",
+            "critic_iterations": state.get("critic_iterations", 0) + 1
+        }
+        
+    verified, critic_feedback = run_legal_critic_agent(
+        raw_input=state.get("raw_input", ""),
+        draft_opinion=draft,
+        retrieved_chunks=state.get("retrieved_chunks", []),
+        provider=state.get("model_provider")
+    )
+    
+    return {
+        "critic_verified": verified,
+        "critic_feedback": critic_feedback,
+        "critic_iterations": state.get("critic_iterations", 0) + 1
     }

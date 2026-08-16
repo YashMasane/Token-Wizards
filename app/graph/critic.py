@@ -1,92 +1,100 @@
 import re
+import json
 import logging
 from typing import Dict, Any, Tuple, List
+from app.models.llm_factory import get_llm
+from app.graph.agents import AgentExecutionError
 
 logger = logging.getLogger(__name__)
 
 
 def run_legal_critic_agent(
+    raw_input: str,
     draft_opinion: str,
     retrieved_chunks: List[Dict[str, Any]],
+    provider: str = None,
 ) -> Tuple[bool, str]:
     """
-    Audits the generated draft opinion for:
-    1. Presence of the required 6 structural section headers
-    2. Citation tags ([SRC-1], [SRC-2], etc.) in the draft body
-    3. Actual grounding — document names from retrieved chunks must appear in the draft
-       (ensures the LLM used the RAG context and did not hallucinate sources)
+    Audits the generated draft opinion using an LLM to dynamically verify:
+    1. It properly answers the user's raw input query.
+    2. It is logically structured using appropriate dynamic markdown headers tailored to the content.
+    3. Citation tags ([SRC-1], [SRC-2], etc.) in the draft body.
+    4. Actual grounding — document names from retrieved chunks must appear in the draft
+       (ensures the LLM used the RAG context and did not hallucinate sources).
 
     Returns (is_verified: bool, feedback_message: str).
-    This function does NOT silently pass everything — it reports exactly what is missing.
     """
     if not draft_opinion or not draft_opinion.strip():
         logger.error("[Critic] Draft opinion is empty — nothing to audit.")
         return False, "CRITIC FAIL: Draft opinion is empty. The synthesis agent did not produce output."
 
-    draft_lower = draft_opinion.lower()
-    issues = []
+    logger.info("[Critic] Running LLM-based Critic Audit...")
 
-    # ── Check 1: Required section headers ────────────────────────────────────
-    required_sections = [
-        ("issue restatement", "## 1. Issue Restatement"),
-        ("applicable provisions", "## 2. Applicable Provisions"),
-        ("draft analysis", "## 3. Draft Analysis"),
-        ("compliance risk", "## 4. Compliance Risk Flags"),
-        ("sources", "## 5. Sources Used"),
-        ("disclaimer", "## 6. Disclaimer"),
-    ]
-    missing_sections = [label for keyword, label in required_sections if keyword not in draft_lower]
-    if missing_sections:
-        issues.append(f"Missing mandatory section headers: {missing_sections}")
+    # Build context string for the LLM
+    sources_summary = "\n".join([
+        f"[{i+1}] {c.get('document_name', 'Unknown Document')}" for i, c in enumerate(retrieved_chunks)
+    ]) if retrieved_chunks else "None"
 
-    # ── Check 2: Citation tags ────────────────────────────────────────────────
-    citation_pattern = re.compile(r"\[SRC-\d+\]")
-    found_citations = citation_pattern.findall(draft_opinion)
-    if not found_citations:
-        issues.append(
-            "No [SRC-N] citation tags found in draft. "
-            "The draft must include inline source references (e.g. [SRC-1], [SRC-2])."
-        )
+    prompt = f"""You are the Chief Legal Critic for the Law Department / LSGD.
+Your job is to audit a drafted legal opinion to ensure it meets strict quality standards.
 
-    # ── Check 3: RAG grounding — retrieved chunk names must appear in draft ──
-    if retrieved_chunks:
-        ungrounded_sources = []
-        for chunk in retrieved_chunks:
-            doc_name = chunk.get("document_name", "")
-            doc_type = chunk.get("doc_type", "")
-            # Use a short distinctive fragment of the document name for matching
-            # e.g. "Kerala Building Rules" from "Kerala Building Rules, 2022"
-            fragments = [w for w in doc_name.split() if len(w) > 4]
-            significant_fragment = " ".join(fragments[:3]).lower() if fragments else ""
-            if significant_fragment and significant_fragment not in draft_lower:
-                ungrounded_sources.append(doc_name)
+USER QUERY:
+{raw_input}
 
-        # Deduplicate
-        ungrounded_sources = list(dict.fromkeys(ungrounded_sources))
-        if ungrounded_sources:
-            issues.append(
-                f"Possible hallucination risk: the following retrieved source(s) are NOT referenced "
-                f"in the draft — {ungrounded_sources}. "
-                "The officer must verify that cited documents match the retrieved corpus."
-            )
-    else:
-        issues.append(
-            "No retrieved chunks were passed to the Critic. "
-            "RAG grounding cannot be verified — officer must manually validate all citations."
-        )
+AVAILABLE SOURCES:
+{sources_summary}
 
-    # ── Verdict ───────────────────────────────────────────────────────────────
-    if issues:
-        feedback = "CRITIC WARNINGS:\n" + "\n".join(f"  • {i}" for i in issues)
-        logger.warning(f"[Critic] Audit completed with issues:\n{feedback}")
-        # Structural section failures are hard failures; grounding warnings are soft
-        structural_fail = any("Missing mandatory section" in i for i in issues)
-        return not structural_fail, feedback
+DRAFT OPINION TO AUDIT:
+---
+{draft_opinion}
+---
 
-    feedback = (
-        f"CRITIC PASS: Draft contains all 6 required sections, "
-        f"{len(found_citations)} inline citation(s) [{', '.join(set(found_citations))}], "
-        f"and references {len(retrieved_chunks)} retrieved source(s)."
-    )
-    logger.info(f"[Critic] {feedback}")
-    return True, feedback
+You must verify the following:
+1. DOES IT ANSWER THE QUERY? If the draft correctly states that it cannot answer due to missing information, this is ACCEPTABLE and should PASS. Otherwise, does the draft directly and accurately answer the user's specific query?
+2. STRUCTURE: Is the response logically structured using professional Markdown headers tailored to the context (e.g. ## Summary, ## Analysis, ## Steps)? It should NOT use a rigid template if it doesn't fit the query. It should also NOT have a "Sources Used" or "References" section at the end.
+3. CITATIONS: Are there inline [SRC-N] tags in the text?
+4. GROUNDING: Does it rely ONLY on the Available Sources listed above? (NOTE: It is perfectly acceptable if the draft only uses a few of the sources. It does NOT need to use all of them. It just must not invent fake facts or sources).
+
+Output your audit result as a strict JSON object with EXACTLY these two keys:
+{{
+  "verified": true or false,
+  "feedback": "If verified is true, write a brief success message. If false, clearly and specifically explain what is missing, hallucinated, or incorrect so the drafting agent can fix it."
+}}
+
+Do NOT output any markdown blocks like ```json. Output ONLY the raw JSON object.
+"""
+
+    try:
+        llm = get_llm(provider=provider, temperature=0.0)
+        res = llm.invoke([{"role": "user", "content": prompt}])
+        
+        if not res or not res.content:
+            return False, "CRITIC FAIL: Critic LLM returned an empty response."
+            
+        content = res.content.strip()
+        # Clean up any potential markdown formatting
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+            
+        parsed = json.loads(content.strip())
+        
+        is_verified = bool(parsed.get("verified", False))
+        feedback = parsed.get("feedback", "No feedback provided by critic.")
+        
+        if is_verified:
+            logger.info(f"[Critic] CRITIC PASS: {feedback}")
+        else:
+            logger.warning(f"[Critic] CRITIC FAIL: {feedback}")
+            
+        return is_verified, feedback
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"[Critic] Failed to parse JSON from LLM: {res.content}")
+        return False, f"CRITIC FAIL: Critic LLM returned invalid JSON. Please retry. Output was: {res.content}"
+    except Exception as e:
+        logger.error(f"[Critic] LLM invocation failed: {e}")
+        return False, f"CRITIC FAIL: Critic LLM invocation failed: {e}"
