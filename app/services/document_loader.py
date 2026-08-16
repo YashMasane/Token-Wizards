@@ -114,9 +114,9 @@ def load_mock_corpus_documents(skip_db: bool = False) -> List[Dict[str, Any]]:
                     page_text = page_obj["text"]
                     tables = page_obj.get("tables", [])
 
-                    # Detect Section/Rule/Para headers in page text
-                    clauses = re.findall(r"(Section\s*\d+(?:\(\d+\))?|Para\s*\d+|Key\s*Holding|Case\s*Details)", page_text, re.IGNORECASE)
-                    clause_str = ", ".join(list(set(clauses))) if clauses else f"Page {page_num}"
+                    # Detect Section/Rule/Para/Chapter/Article/GO headers in page text
+                    clauses = re.findall(r"(Section\s*\d+(?:\(\d+\))?|Rule\s*\d+(?:\(\d+\))?(?:[a-z])?|Chapter\s*(?:[IVXLCDM]+|\d+)|Article\s*\d+|Clause\s*\d+|G\.O\.\s*\(.*?\)\s*No\.\s*\d+|Para\s*\d+|Key\s*Holding|Case\s*Details)", page_text, re.IGNORECASE)
+                    clause_str = ", ".join(list(set(clauses))) if clauses else ""
 
                     content_full = page_text
                     if tables:

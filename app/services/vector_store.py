@@ -120,6 +120,11 @@ class VectorStoreService:
         existing = self.collection.get(ids=ids)["ids"]
         new_indices = [i for i, cid in enumerate(ids) if cid not in existing]
         
+        # Build vocabulary dynamically if fallback
+        if getattr(self.embedding_mgr, "is_fallback", False):
+            # We must build vocab for ALL chunks because the fallback is memory-only
+            self.embedding_mgr.embed_texts(contents)
+        
         if new_indices:
             logger.info(f"Embedding and upserting {len(new_indices)} new chunks into ChromaDB...")
             new_contents = [contents[i] for i in new_indices]
