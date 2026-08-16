@@ -209,9 +209,12 @@ def run_draft_synthesis_agent(
     provider: str = None,
     document_context: str = None,
     document_filename: str = None,
+    previous_draft: str = None,
+    critic_feedback: str = None,
 ) -> str:
     """
     Synthesizes agent findings into the mandatory 6-part standardized legal draft opinion.
+    If previous_draft and critic_feedback are provided, acts as a revision step.
     Raises AgentExecutionError if the LLM call fails — no hardcoded fallback.
     """
     logger.info("[DraftSynthesis] Compiling multi-agent findings into standardized 6-part legal opinion...")
@@ -245,9 +248,19 @@ USER-UPLOADED DOCUMENT — "{fname}" (Analyse this document and answer the user'
 ---
 """
 
-    prompt = f"""You are the Lead Legal Draft Officer for the Law Department / LSGD.
-Synthesize the following evaluation into the mandatory 6-part standardized legal draft opinion layout.
+    critic_section = ""
+    if critic_feedback and previous_draft:
+        critic_section = f"""
+CRITICAL REVISION REQUIRED:
+The previous draft you generated failed the legal critic audit.
+Critic Feedback: {critic_feedback}
 
+Your task is to REWRITE the draft to explicitly address this feedback. Do not repeat the same mistakes.
+"""
+
+    prompt = f"""You are the Lead Legal Draft Officer for the Law Department / LSGD.
+Synthesize the following evaluation into a professional, logically structured markdown response.
+{critic_section}
 INPUT QUERY / APPLICATION:
 {raw_input}
 Parsed Application Details: {json.dumps(parsed_form or {})}{doc_section}
@@ -263,26 +276,12 @@ COMPLIANCE RISK FLAGS:
 RETRIEVED SOURCES:
 {sources_summary}
 
-You MUST output the final opinion using EXACTLY these 6 markdown section headers, grounded only in
-the agent findings and retrieved sources above. Do NOT invent facts, case numbers, or rule sections
-that are not present in the context above.
-
-# Legal Opinion & Compliance Review
-
-## 1. Issue Restatement
-[Concise executive restatement of the legal query / application based on the input above]
-
-## 2. Applicable Provisions
-[List only the provisions and GOs that appear in the retrieved sources above, with inline [SRC-N] tags]
-
-## 3. Draft Analysis (AI-Generated — Requires Officer Review)
-[Detailed analysis applying retrieved rules to the facts from the query, with inline [SRC-N] citations]
-
-## 4. Compliance Risk Flags
-[Bulleted list of compliance warnings derived from the agent findings and risk flags above]
-
-## 5. Sources Used
-[SOURCES_TABLE_PLACEHOLDER]
+INSTRUCTIONS:
+1. Dynamic Structure: Analyze the user's intent. Instead of a fixed format, create a logical and professional markdown structure that directly answers the user's query. Use clear markdown headers (e.g., `## Summary`, `## Analysis`, `## Step-by-Step Guide`) that fit the context.
+2. Grounding & Citations: Base your response ONLY on the Agent Findings and Retrieved Sources above. Do not hallucinate facts.
+3. Inline Citations: You MUST use inline citations in the format [SRC-N] for every factual claim.
+4. No Sources Section: Do NOT include a "Sources Used" or "References" section at the end of your response. The system UI will append the bibliography automatically.
+5. Strict Anti-Hallucination: If the Agent Findings indicate that no relevant rules, GOs, or precedents were found, you MUST explicitly refuse to answer the core legal question and state that the system lacks the specific statutory context. Do NOT invent a general checklist, process, or steps out of thin air.
 """
 
     # Return both the LLM text AND the structured sources list
@@ -309,10 +308,8 @@ that are not present in the context above.
         res = llm.invoke([{"role": "user", "content": prompt}])
         if not res or not res.content:
             raise ValueError("LLM returned an empty response.")
-        # Strip the entire "## 5. Sources Used" section (and anything after it)
-        # because sources are rendered by the frontend as a proper HTML card
-        import re
-        output = re.sub(r'##\s*\d*\.?\s*Sources Used.*', '', res.content, flags=re.DOTALL | re.IGNORECASE).rstrip()
+        
+        output = res.content.strip()
         # Return a tuple: (text_output, structured_sources)
         return output, _build_structured_sources(sources_used)
     except AgentExecutionError:

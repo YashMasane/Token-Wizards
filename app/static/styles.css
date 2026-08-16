@@ -474,6 +474,32 @@ body {
     overflow-x: auto;
     word-wrap: break-word;
     overflow-wrap: break-word;
+    position: relative;
+}
+
+/* Copy Buttons */
+.copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    border-radius: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+}
+.message-content:hover .copy-btn {
+    opacity: 1;
+}
+.copy-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
 }
 
 .user-message .message-content {
@@ -538,6 +564,34 @@ body {
 }
 .accordion-body ul { list-style: none; margin: 0; }
 .accordion-body li { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+
+/* Execution Stream Accordion */
+.stream-accordion {
+    background: rgba(0,0,0,0.25);
+    border: 1px solid var(--border-glass);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+.stream-accordion-header {
+    padding: 10px 14px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.02);
+    user-select: none;
+}
+.stream-accordion-header:hover {
+    color: var(--text-primary);
+    background: rgba(255,255,255,0.08);
+}
+.stream-accordion-body {
+    padding: 12px;
+    border-top: 1px solid var(--border-glass);
+}
 
 .risk-badge {
     padding: 8px 12px;
@@ -626,7 +680,7 @@ body {
 }
 
 .chat-input-form textarea {
-    flex: 1;
+    width: 100%;
     background: transparent;
     border: none;
     color: var(--text-primary);
@@ -635,10 +689,15 @@ body {
     font-size: 0.95rem;
     resize: none;
     outline: none;
-    max-height: 150px;
-    min-height: 24px;
-    line-height: 1.4;
+    max-height: 200px;
+    min-height: 40px;
+    line-height: 1.5;
+    overflow-y: hidden;  /* MUST be hidden so scrollHeight = true content height */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.15) transparent;
 }
+.chat-input-form textarea::-webkit-scrollbar { width: 4px; }
+.chat-input-form textarea::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
 .chat-input-form textarea::placeholder { color: var(--text-secondary); }
 
 .btn-send {
@@ -1619,4 +1678,196 @@ body {
 @keyframes slideUpModal {
     from { opacity: 0; transform: translateY(30px) scale(0.95); }
     to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Legal Reasoning Plan — Rich Card UI
+───────────────────────────────────────────────────────────────────────────── */
+.plan-trace {
+    background: rgba(79, 70, 229, 0.06);
+    border: 1px solid rgba(79, 70, 229, 0.2);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    animation: fadeIn 0.3s ease;
+}
+
+.plan-trace-rich {
+    background: rgba(15, 22, 41, 0.7);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.plan-trace-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #818CF8;
+    letter-spacing: 0.02em;
+    margin-bottom: 10px;
+}
+
+.plan-complexity-badge {
+    margin-left: auto;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    border: 1px solid;
+    letter-spacing: 0.05em;
+}
+
+.plan-summary {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    font-style: italic;
+    border-left: 2px solid rgba(99, 102, 241, 0.4);
+    padding-left: 10px;
+}
+
+.plan-laws-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.plan-law-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    color: #A5B4FC;
+    font-size: 0.72rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 340px;
+}
+
+.plan-strategy {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.plan-steps-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.plan-step-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+    padding: 10px 14px;
+    transition: border-color 0.2s;
+}
+
+.plan-step-card:hover {
+    border-color: rgba(99, 102, 241, 0.35);
+}
+
+.plan-step-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.plan-step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    background: rgba(99, 102, 241, 0.2);
+    border: 1px solid rgba(99, 102, 241, 0.4);
+    border-radius: 50%;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #818CF8;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.plan-step-action {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.plan-step-focus {
+    font-size: 0.75rem;
+    color: #C4B5FD;
+    margin-bottom: 5px;
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    padding-left: 32px;
+}
+
+.plan-step-sources {
+    display: flex;
+    gap: 5px;
+    padding-left: 32px;
+    margin-bottom: 5px;
+    flex-wrap: wrap;
+}
+
+.plan-source-tag {
+    font-size: 0.68rem;
+    background: rgba(6, 182, 212, 0.1);
+    border: 1px solid rgba(6, 182, 212, 0.25);
+    color: #67E8F9;
+    padding: 1px 8px;
+    border-radius: 12px;
+    font-weight: 500;
+}
+
+.plan-step-output {
+    font-size: 0.73rem;
+    color: rgba(16, 185, 129, 0.85);
+    padding-left: 32px;
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    line-height: 1.35;
+}
+
+/* Legacy flat plan list */
+.plan-step-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.plan-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+
+.plan-step-text {
+    line-height: 1.4;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
 }

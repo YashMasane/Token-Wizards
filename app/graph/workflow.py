@@ -11,7 +11,8 @@ from app.graph.nodes import (
     targeted_retrieval_node,
     sufficiency_check_node,
     multi_agent_evaluation_node,
-    draft_synthesis_node
+    draft_synthesis_node,
+    legal_critic_node
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,18 @@ def route_after_sufficiency_check(state: LegalAssistantState) -> str:
         return "re_retrieval"
     return "evaluation"
 
+def route_after_critic(state: LegalAssistantState) -> str:
+    """
+    If the critic verifies the draft, or we've hit the loop limit, end.
+    Otherwise, send it back to synthesis for revision.
+    """
+    if state.get("critic_verified"):
+        return "end"
+    if state.get("critic_iterations", 0) >= 2:
+        logger.warning("[Workflow] Critic loop limit (2) reached. Outputting unverified draft.")
+        return "end"
+    return "synthesis"
+
 def build_legal_assistant_graph():
     workflow = StateGraph(LegalAssistantState)
     
@@ -46,6 +59,7 @@ def build_legal_assistant_graph():
     workflow.add_node("sufficiency_check", sufficiency_check_node)
     workflow.add_node("multi_agent_eval", multi_agent_evaluation_node)
     workflow.add_node("synthesis", draft_synthesis_node)
+    workflow.add_node("critic", legal_critic_node)
     
     # Entry Point
     workflow.set_entry_point("security_guardrail")
@@ -79,7 +93,16 @@ def build_legal_assistant_graph():
     )
     
     workflow.add_edge("multi_agent_eval", "synthesis")
-    workflow.add_edge("synthesis", END)
+    workflow.add_edge("synthesis", "critic")
+    
+    workflow.add_conditional_edges(
+        "critic",
+        route_after_critic,
+        {
+            "end": END,
+            "synthesis": "synthesis"
+        }
+    )
 
     
     # Compile with MemorySaver Checkpointer

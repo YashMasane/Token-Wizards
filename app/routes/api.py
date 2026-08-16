@@ -35,18 +35,44 @@ async def process_legal_query(req: LegalQueryRequest):
     # Save incoming user message
     save_message(thread_id, role="user", content=req.query)
     
-    initial_state = {
-        "thread_id": thread_id,
-        "raw_input": req.query,
-        "input_type": "clarification_answer" if req.is_clarification_response else "legal_query",
-        "parsed_form": {},
-        "chat_history": history_msgs,
-        "iteration_count": 0,
-        "model_provider": req.model_provider,
-        "model_name": req.model_name,
-        "document_context": req.document_context or None,
-        "document_filename": req.document_filename or None,
-    }
+    initial_state: Dict[str, Any]
+
+    if req.is_clarification_response:
+        # ── Clarification answer: send ONLY the new input + metadata ──────────
+        # Do NOT pass parsed_form:{} or reset missing_parameters / clarification_prompt,
+        # or we will wipe the checkpoint state that LangGraph already holds for this thread.
+        # The MemorySaver will merge these fields on top of the saved checkpoint.
+        initial_state = {
+            "thread_id": thread_id,
+            "raw_input": req.query,
+            "input_type": "clarification_answer",
+            "chat_history": history_msgs,
+            "model_provider": req.model_provider,
+            "model_name": req.model_name,
+            "is_clarification_response": True,
+            # Carry document context if provided (user may not re-send it)
+            **({"document_context": req.document_context} if req.document_context else {}),
+            **({"document_filename": req.document_filename} if req.document_filename else {}),
+        }
+        logger.info(
+            f"[API: /api/query] Building minimal clarification-answer state for thread '{thread_id}'"
+        )
+    else:
+        # ── Normal query: full fresh state ────────────────────────────────────
+        initial_state = {
+            "thread_id": thread_id,
+            "raw_input": req.query,
+            "input_type": "legal_query",
+            "parsed_form": {},
+            "chat_history": history_msgs,
+            "iteration_count": 0,
+            "model_provider": req.model_provider,
+            "model_name": req.model_name,
+            "document_context": req.document_context or None,
+            "document_filename": req.document_filename or None,
+            "is_clarification_response": False,
+            "user_answers": {},
+        }
     
     config = {"configurable": {"thread_id": thread_id}}
     
@@ -54,6 +80,8 @@ async def process_legal_query(req: LegalQueryRequest):
         try:
             logger.info(f"[API: /api/query] Invoking LangGraph streaming workflow for thread '{thread_id}'...")
             final_output = ""
+            latest_draft = ""
+            latest_sources = []
             risk_flags = []
             
             async for event in legal_graph.astream(initial_state, config=config, stream_mode="updates"):
@@ -67,6 +95,8 @@ async def process_legal_query(req: LegalQueryRequest):
                     if node == "planner":
                         if update.get("reasoning_plan"):
                             yield f"data: {json.dumps({'type': 'plan', 'content': update['reasoning_plan']})}\n\n"
+                        if update.get("legal_plan"):
+                            yield f"data: {json.dumps({'type': 'legal_plan', 'content': update['legal_plan']})}\n\n"
                         if update.get("requires_user_clarification"):
                             yield f"data: {json.dumps({'type': 'clarification', 'content': update['clarification_prompt']})}\n\n"
                     
@@ -75,20 +105,34 @@ async def process_legal_query(req: LegalQueryRequest):
                             risk_flags = update["compliance_risk_flags"]
                             yield f"data: {json.dumps({'type': 'flags', 'content': risk_flags})}\n\n"
                             
-                    if node == "synthesis" or node == "chitchat":
+                    if node == "synthesis":
+                        latest_draft = update.get("final_markdown_output") or update.get("draft_opinion") or "No output generated."
+                        latest_sources = update.get("sources_used", [])
+                        
+                    if node == "chitchat":
                         final_output = update.get("final_markdown_output") or update.get("draft_opinion") or "No output generated."
-                        # Smooth pseudo-streaming for final text
                         import re
                         tokens = re.split(r'(\s+)', final_output)
                         for token in tokens:
                             if token:
                                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
                                 await asyncio.sleep(0.01)
-                                
-                        # Emit structured sources at the end so they appear after text
-                        structured_sources = update.get("sources_used", [])
-                        if structured_sources:
-                            yield f"data: {json.dumps({'type': 'sources', 'content': structured_sources})}\n\n"
+
+                    if node == "critic":
+                        is_verified = update.get("critic_verified", False)
+                        iterations = update.get("critic_iterations", 0)
+                        
+                        if is_verified or iterations >= 2:
+                            final_output = latest_draft
+                            import re
+                            tokens = re.split(r'(\s+)', final_output)
+                            for token in tokens:
+                                if token:
+                                    yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                                    await asyncio.sleep(0.01)
+                            
+                            if latest_sources:
+                                yield f"data: {json.dumps({'type': 'sources', 'content': latest_sources})}\n\n"
                                 
             # End of stream, save to DB
             save_message(thread_id, role="assistant", content=final_output, metadata={"risk_flags": risk_flags})
